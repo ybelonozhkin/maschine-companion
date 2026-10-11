@@ -1,0 +1,8 @@
+bin/
+logs/
+research/
+tools/
+companion.ini
+
+# Local development notes
+/docs/
