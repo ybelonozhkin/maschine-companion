@@ -2,7 +2,7 @@
 
 A Windows tray app that lets you launch and close Maschine from the Mikro MK3 controller.
 
-The <img src="assets/maschine-button.svg" alt="Maschine" width="20" height="20"> button lights up when the companion is ready. Hold it to launch Maschine. Hold it again to bring the open window forward and request a normal exit. Maschine handles its own save prompt.
+The <img src="assets/maschine-button.svg" alt="Maschine" width="20" height="20"> button lights up when the companion is ready. Hold it to launch Maschine. Hold it again to bring the open window forward and request a normal exit.
 
 ## Setup
 
