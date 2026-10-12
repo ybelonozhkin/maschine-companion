@@ -1,60 +1,63 @@
 # Maschine Mikro MK3 Companion
 
-This small Windows tray app gives your Mikro a standby light and a launch button.
+A Windows tray app that lets you launch and close Maschine from the Mikro MK3 controller.
 
-The <img src="assets/maschine-button.svg" alt="Maschine" width="20" height="20"> button lights up in standby. Hold it to launch Maschine, and hold it again to close it.
+The <img src="assets/maschine-button.svg" alt="Maschine" width="20" height="20"> button lights up when the companion is ready. Hold it to launch Maschine. Hold it again to bring the open window forward and request a normal exit. Maschine handles its own save prompt.
 
-Pair it with my [Maschine Mikro Browser](https://github.com/ybelonozhkin/maschine-mikro-browser) mod to browse sounds, manage effects and answer the save prompt from the controller too.
+## Setup
 
-## Features
+You need Windows 11 x64, the official Mikro MK3 driver, Maschine, and the Windows .NET Framework compiler. The tested setup uses Maschine 3.7.1. Other controllers are not supported.
 
-- Detects an already connected Mikro MK3 controller and USB reconnection.
-- Shows a dim Maschine button while waiting to launch.
-- Launches a configurable executable after a 1.2-second hold (configurable).
-- Brings the newly launched Maschine main window to the foreground.
-- Requests normal exit after a 2-second hold. The configured application handles unsaved changes through its own dialog.
-- Prevents repeated actions during one hold and duplicate companion instances.
-- Provides tray status, local configuration, and timestamped logs.
+1. Clone or download this repository into a writable folder.
+2. Open Windows PowerShell in that folder and build:
 
-See [CHANGELOG.md](CHANGELOG.md) for changes.
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Companion.ps1
+   ```
 
-## Requirements
+3. Edit `companion.ini` if Maschine is installed elsewhere. The build creates this file from `companion.example.ini` when it is missing.
+4. Run `Start-Companion.cmd`. The app starts silently in the system tray. Its icon may be under the tray's hidden-icons arrow.
+5. Connect the Mikro MK3. It can also be connected before the companion starts.
 
-- Windows 11 x64 with .NET Framework 4.x available.
-- Maschine Mikro MK3 with the official Native Instruments Windows driver.
-- Maschine installed locally, or another executable configured for launch.
-- A writable folder for the utility, configuration, and logs.
+The build runs the tests and creates `bin\MaschineCompanion.exe`. It uses .NET Framework 4.x; no .NET SDK or NuGet packages are needed. Exit the companion before rebuilding.
 
-## Build from source
+## Controls
 
-Clone or download this repository into a writable folder.
+| Action | Result |
+| --- | --- |
+| Hold the Maschine button for 1.2 seconds | Launch the configured application and bring its window forward. |
+| Hold it for 2 seconds while the application is running | Bring its main window forward and send a normal close request. |
+| Release before the hold time | Cancel the action. |
 
-Use **Windows PowerShell 5.1** on x64 Windows with the .NET Framework compiler and desktop assemblies installed. No .NET SDK or NuGet restore is required. The build currently targets Windows .NET Framework 4.x, not modern .NET.
+These are the default hold times. Release the button before another action; keeping it held does not repeat the command.
 
-Exit the companion from its tray menu before rebuilding, then open PowerShell in the project folder:
+For closure, the companion prefers the configured application's active main window. If another app is active, it selects a single visible instance in the background. If several instances are open, activate the one you want to close first. Switching to another instance during the hold cancels the request. Existing modal dialogs must be answered manually. The companion never forces a process to end.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Companion.ps1
-```
+During a launch press, `_` appears at the left edge of the first OLED row. It clears before the launch command, or when you release early. The rest of the screen is blank. Blocked presses and exit requests do not draw the marker.
 
-The script creates `companion.ini` from `companion.example.ini` if it is missing, compiles and runs the logic tests, then builds the GUI executable:
+## Tray menu
 
-- `bin\MaschineCompanion.exe` — tray application.
-- `bin\CompanionTests.exe` — hardware-independent tests.
+- **Pause for 1 hour** disables companion actions and clears its standby light when no blocking application is detected. It is hidden while the pause is active.
+- **Resume** ends the pause early. Otherwise, the pause ends after an hour, including time spent asleep. Restarting the companion clears it.
+- **Show status** shows why the companion is ready or paused, along with the config path and Windows startup setting.
+- **Reload config** applies changes to `companion.ini`. A failed reload keeps the previous settings. Release a held button before trying again.
+- **Start with Windows** enables startup for your Windows account. Disable it before removing the app; enable it again after moving the folder.
+- **Open log folder** opens the session logs.
+- **Exit** closes the companion.
 
-## Run
+Starting a second copy exits immediately. Normal startup, pause, and resume do not show notifications. Errors that prevent startup, launch, config reload, or startup registration are shown on the computer.
 
-1. Edit `companion.ini` if Maschine is installed outside the default location.
-2. Run `Start-Companion.cmd`. The companion starts silently and stays in the system tray; it does not show a startup notification or open a persistent window. Expand hidden tray icons if necessary.
-3. Connect the controller. With Maschine closed, the Maschine button lights dimly.
-4. Hold the button for 1.2 seconds to launch. Release it before another action.
-5. With the configured application running, hold for 2 seconds to request exit. If one instance is open in the background, the companion brings it forward first. Answer any save prompt in the application.
+## DAWs, Windows lock, and sleep
 
-Tray menu: **Pause for 1 hour**, **Resume**, **Show status**, **Reload config**, **Open log folder**, **Start with Windows**, and **Exit**. A second launch reuses the existing instance by exiting immediately. Administrator access is not required. Windows startup can be enabled or disabled with **Start with Windows**; it is off unless explicitly enabled. Notifications are reserved for launch and configuration reload errors; an unrecoverable startup error opens an error message. **Show status** opens a window only when selected.
+By default, the companion pauses while a DAW in `DawProcesses` is running, even if no Maschine plug-in is loaded. When it detects a newly started DAW, it attempts to turn off its standby light once. It then leaves the controller to the DAW and plug-in. After the DAW closes, the standby light returns if no other blocker remains.
+
+Windows lock disables companion actions and clears its standby light. Unlock triggers a fresh check of the controller and running applications. The light stays off if a DAW or manual pause still blocks operation. An unavailable input desktop, such as a secure UAC prompt, also pauses the companion.
+
+After sleep, the companion cancels unfinished holds, checks the device again, and refreshes standby lighting. The sleep handler was tested with simulated notifications; real sleep and hibernate recovery still need hardware testing.
 
 ## Configuration
 
-The utility reads `companion.ini` beside the launcher at startup. Use **Reload config** after editing. An invalid reload keeps the previous settings. Reload cancels an in-progress button hold; release and press again.
+Edit `companion.ini` in the project folder, then choose **Reload config**. Windows startup is controlled separately through the tray menu.
 
 ```ini
 Executable=C:\Program Files\Native Instruments\Maschine 3\Maschine 3.exe
@@ -70,127 +73,44 @@ DawProcesses=Ableton Live*;FL;FL64;FL (scaled);FL64 (scaled);FL (compatible memo
 
 | Setting | Meaning |
 | --- | --- |
-| `Executable` | Absolute path to an existing `.exe`. Environment variables are expanded. |
-| `Arguments` | Optional arguments passed directly to the executable. |
-| `HoldMilliseconds` | Launch hold duration, from 500 to 10000 ms. |
-| `StandbyLed` | Enable or disable standby LED writes. |
-| `StandbyBrightness` | `Dim` (default), `Normal`, or `Bright`; values are case-insensitive. |
-| `EnableClose` | Enable normal close requests for the application in `Executable`. |
-| `CloseHoldMilliseconds` | Exit hold duration, from 1000 to 10000 ms. |
-| `PauseWhenDawRunning` | `true` (default) pauses actions and hands off standby lighting when a listed DAW runs; `false` ignores the DAW list. |
-| `DawProcesses` | DAW process names separated by `;`. A trailing `*` matches a prefix. Defaults cover the DAWs listed below. Empty disables this guard. |
+| `Executable` | Absolute path to an existing `.exe`. Environment variables are accepted. Use the application itself, rather than a separate launcher. |
+| `Arguments` | Optional command-line arguments. |
+| `HoldMilliseconds` | Launch hold time: 500?10000 ms. |
+| `StandbyLed` | Enable or disable the standby light. |
+| `StandbyBrightness` | `Dim` (default), `Normal`, or `Bright`. These are hardware levels, not percentages. |
+| `EnableClose` | Allow normal close requests for the configured application. |
+| `CloseHoldMilliseconds` | Exit hold time: 1000?10000 ms. |
+| `PauseWhenDawRunning` | Pause for listed DAWs when `true` (default). Set `false` to ignore the list. |
+| `DawProcesses` | Process names separated by `;`. A trailing `*` matches a prefix. Names are case-insensitive; `.exe` is optional. An empty list disables DAW blocking. |
 
-Launch checks process names for the configured executable and Maschine 2/3. An existing process blocks launch even if it has no visible window. A 15-second cooldown follows each launch attempt. Configure a direct application executable rather than a launcher that hands off to another process.
+The defaults cover Ableton Live, FL Studio, REAPER, Cubase, Nuendo, Studio One, Bitwig Studio, Pro Tools, and Cakewalk/Sonar. To add another host, copy its executable name from Task Manager's **Details** tab. These presets detect processes; they are not a claim that every host has been tested with the controller.
 
-Exit uses the configured application's main window. The companion selects it when the hold begins, checks it again at the hold threshold, brings it forward and sends a normal close request. See the instance selection rules below.
+## Troubleshooting and limitations
 
-## Choosing which instance to close
+- **The button does nothing:** check **Show status**. An existing target or Maschine process blocks launch even if it has no visible window. Each launch attempt also starts a 15-second cooldown.
+- **Exit does nothing:** answer any modal dialog, release the button, and try again. If several instances are open, activate the intended one. Windows may deny foreground activation.
+- **The standby light remains on when a DAW opens:** clearing is skipped if the host is already more than three seconds old, a Maschine module is loaded, or inspection fails. This avoids writing when control may have passed to the plug-in.
+- **Unexpected plug-in lighting:** enable DAW blocking and check the process list. Hosts absent from the list are not covered. Disabling DAW blocking lets standalone Maschine and its plug-in compete for the controller.
+- **Screen or LED feedback is missing:** check the log for HID errors. A rejected or pending write can prevent display cleanup or delay an action.
 
-- If the configured application's main window is active, the button closes that instance.
-- If another application is active and only one instance of the configured app has a visible main window, the companion brings it forward and requests closure.
-- If several instances are in the background, activate the intended one before holding the button.
+LED updates write the whole panel state. Process and module checks cannot make the handoff atomic: a plug-in can start between the check and the write. The Ableton handoff was tested on one PC; other DAWs and driver versions need further testing. Controller Editor and Komplete Kontrol also block standby lighting when detected.
 
-The selected window is checked again before closing. Switching to another instance during the hold cancels the request. A modal dialog must be answered first. The application receives a normal close request, like clicking its window's close button; it handles saving itself.
+Logs are stored in `logs\companion-*.log`. They include process identifiers and local paths; review them before sharing. A session log is truncated at 2 MiB. Old session files remain until you remove them.
 
-## Windows startup and sleep
+The log records the time from button press to the launch command. Buttons use Windows Raw Input events; process and desktop checks run every 500 ms, and device inventory is checked every second.
 
-Toggle **Start with Windows** in the tray menu to register this executable for the current user's Windows sign-in. It uses the current-user Run registry key, does not need administrator access, and starts silently. Disable it before removing the utility; after moving the folder, enable it again from the new location. The checkbox is independent of `companion.ini`.
-
-The tray status names a detected running application or DAW instead of suggesting that an unavailable action is ready. **Show status** includes the blocking processes, startup setting and config location.
-
-On suspend, pending holds and foreground requests are cancelled. On resume, controller inventory and process checks run again and standby lighting is refreshed even if Windows retained the device handle. Existing Maschine/DAW guards and a one-hour pause still apply. A held button must be released before another action. The notification handler was tested with synthetic power messages; real sleep/hibernate recovery still needs hardware confirmation.
-
-## Temporary pause
-
-Choose **Pause for 1 hour** in the tray menu to stop companion launch/exit actions and standby lighting. Companion-owned standby lighting is cleared once if no native owner is detected; an active Maschine/plug-in panel is left untouched. The tray shows the local resume time. **Resume** ends the pause early. **Pause for 1 hour** is hidden during the pause and returns after resume or expiry.
-
-Resume is silent and restores standby lighting only when the usual Maschine/DAW guards permit it. The pause expires by elapsed wall-clock time, including sleep, and applies to the current companion session; restarting the companion clears it. Release a held button before trying another action.
-
-## Standby light
-
-The standby LED defaults to **Dim**. Set `StandbyBrightness=Normal` or `StandbyBrightness=Bright` in `companion.ini`, then select **Reload config** from the tray menu. Omitting this setting keeps Dim. These are hardware brightness steps, not a percentage scale. The community Mikro MK3 light protocol updates the full LED state, so other lights are off in standby.
-
-A short-lived shared write handle sends the LED report while Maschine and the configured target are closed. No HID input is read through that handle; input monitoring uses Windows Raw Input. LED writes are also blocked when Controller Editor or Komplete Kontrol is detected. Once the application is running, the companion leaves its lighting to the native software.
-
-With `PauseWhenDawRunning=true`, when a newly started DAW is detected during companion-owned standby, the companion makes one final attempt to clear its standby lighting, then pauses controller actions and LED writes. The handoff is skipped if the host is already more than three seconds old, a Maschine module is loaded, another native owner is detected, or process inspection fails. It never repeatedly clears lighting during the DAW session. The defaults include Ableton Live, FL Studio, REAPER, Cubase, Nuendo, Studio One, Bitwig Studio, Pro Tools, and Cakewalk/Sonar. The `Ableton Live*` rule matches Live editions and versions, but excludes Ableton helper processes. This guard applies even if the DAW has no Maschine plug-in loaded. After the last matching DAW closes, standby lighting is sent again when Maschine and the other blockers are also closed. The companion does not restore a plug-in panel while its host is running. The final standby clear uses a full LED report; process/module checks are snapshots, so a plug-in loading simultaneously can still race with this handoff. A stale standby light may remain when the conservative checks skip clearing.
-
-To add another host, find its executable name in Task Manager's Details tab, for example `DawProcesses=Ableton Live*;reaper`. Names are case-insensitive; the `.exe` suffix is optional. Only a trailing `*` is supported; paths and a global `*` are rejected. Use **Reload config** after editing. Hosts absent from this list cannot be detected as plug-in owners; add their process name or exit the companion during those sessions. If another service rejects or overwrites the light report, check the log; button-driven launch can still work.
-
-To keep the companion active while a DAW runs, set `PauseWhenDawRunning=false` and choose **Reload config**. Your DAW list is retained for later use. This disables DAW-based launch/exit blocking and LED handoff; standalone/native-process guards still apply. With this option disabled, standalone Maschine and a plug-in can compete for the controller and lighting, as in the previously observed workflow.
-
-## Default DAW process rules
-
-| DAW | Process rule(s), without `.exe` | Evidence |
-| --- | --- | --- |
-| Ableton Live | `Ableton Live*` | Live 11 Lite and Live 12 Standard executables found locally. |
-| FL Studio | `FL`, `FL64`, `FL (scaled)`, `FL64 (scaled)`, `FL (compatible memory)` | [Image-Line launcher documentation](https://support.image-line.com/action/knowledgebase?ans=526). |
-| REAPER | `reaper` | [SWS extension build instructions](https://github.com/reaper-oss/sws/wiki/Building-the-SWS-Extension/eaf723bbfd959d91a8113260fd11943e3ec96bac). |
-| Cubase / Nuendo | `Cubase*`, `Nuendo*` | [Steinberg executable names](https://helpcenter.steinberg.de/hc/en-us/articles/15279887297298-Graphical-User-Interface-errors-in-Cubase-13-Nuendo-13); prefix rules accommodate version suffixes. |
-| Studio One | `Studio One` | [PreSonus support](https://support.presonus.com/hc/en-us/articles/29133689796109-Studio-One-Pro-7-Studio-One-Remote-not-connecting). |
-| Bitwig Studio | `Bitwig Studio` | [DrivenByMoss installation instructions](https://github.com/git-moss/DrivenByMoss/wiki/Installation/4341232767480413cc875daa19b73f76cdcb0708). |
-| Pro Tools | `ProTools` | [Avid Windows instructions](https://kb.avid.com/pkb/articles/en_US/Knowledge/Optimising-Processor-Affinity-Windows). |
-| Cakewalk by BandLab | `Cakewalk` | [Executable observed in the vendor-hosted forum](https://discuss.cakewalk.com/profile/889-tay-zonday/); this is a community observation. |
-| Cakewalk Sonar | `Sonar` | [Cakewalk configuration documentation](https://help.cakewalk.com/hc/en-us/articles/60845768676889-Configuration-Profiles-in-Cakewalk-Sonar). |
-
-These are process-name presets, not a claim of tested controller/plug-in compatibility. Names can change between versions or be renamed. Verify Task Manager's Details tab if your DAW does not pause the companion. Prefixes may also match similarly named processes; remove unnecessary rules from your local configuration.
-
-## Tested setup
-
-Hardware behavior was confirmed on one Windows PC with Mikro MK3 and Maschine 3.7.1: dim standby light, launch, foreground activation, and normal exit. The Ableton workflow was also confirmed: DAW startup clears standby lighting and blocks standalone launch, the Maschine plug-in takes over the controller, and DAW exit restores standby lighting after a short delay. Other DAWs, controllers, and software versions have not been tested. Launch and close use the application configured in `Executable`. Closing checks its full executable path, not just its process name.
-
-The companion keeps the controller in native mode and works with the official NI software. It does not change Maschine's EXE, scripts, drivers or firmware.
-
-## Troubleshooting
-
-- **No action or standby light:** use **Show status**. A hidden Maschine process still blocks launch; check Task Manager's Details tab. The companion never kills it.
-- **Wrong executable path:** edit `companion.ini` and reload, or restart after correcting an initial configuration error.
-- **Exit does nothing:** close any modal dialog manually, release the button, and hold again. If several instances of the configured application are open, activate the intended one and keep it active while holding the button. Check the log if foreground activation was denied.
-- **Window stays behind other applications:** inspect `foreground` entries in the log. Windows can deny foreground activation.
-- **LED is unavailable:** inspect `standby LED unavailable` entries and verify the official driver and connected device.
-
-Logs are in `logs\companion-*.log`. They include local executable/device paths and process identifiers. Review logs before sharing them. A session log is truncated when it reaches 2 MiB; old session files are retained until you remove them. Logging failures do not stop controller handling.
-
-## Developer tests
-
-Run tests separately with:
+Run the tests separately with:
 
 ```powershell
 .\bin\CompanionTests.exe --self-test
 ```
 
-Tests cover hold thresholds, one action per press, cancellation, duplicate input reports, configuration validation, full-path close matching, active-instance selection and ambiguous or blocked close targets. Hardware validation still requires a real controller.
-
 ## Related projects
 
-Projects found in the protocol research and local source reviews.
+[Maschine Mikro Browser](https://github.com/ybelonozhkin/maschine-mikro-browser) adds browser controls, effect management, and save-prompt selection through a separate Maschine patch.
 
-### Controller protocols and libraries
-
-- [Maschine.Api](https://github.com/panoramicdata/Maschine.Api) - .NET USB HID library for Maschine controllers.
-- [maschine-mikro-mk3-driver](https://github.com/r00tman/maschine-mikro-mk3-driver) - Linux userspace MIDI driver for Mikro MK3.
-- [maschine.rs](https://github.com/wrl/maschine.rs) - Rust code for communicating with Maschine hardware.
-- [CABL](https://github.com/shaduzlabs/cabl) - controller abstraction library with Maschine support. Related forks: [Drachenkaetzchen](https://github.com/Drachenkaetzchen/cabl) and [styyle14](https://github.com/styyle14/cabl); the latter was downloaded for this research.
-- [openAV-Ctlra](https://github.com/openAVproductions/openAV-Ctlra) - C library with controller drivers and HID decoding, including Maschine.
-- [Encdr](https://github.com/RufusIbiza/Encdr) - Rust NI controller library with HID layouts and display protocols.
-
-### NI protocol research
-
-- [Rebellion](https://github.com/terminar/rebellion) - NI controller integration and IPC research.
-- [NIProtocol](https://github.com/SamL98/NIProtocol) - macOS experiments reading Mikro MK2 input through NIHardwareAgent and sending input to Maschine 2.
-- [Macchina](https://github.com/biappi/Macchina) - experiments reverse-engineering Maschine hardware communication.
-
-### Related NI integrations
-
-- [encdr-maschine-bitwig](https://github.com/RufusIbiza/encdr-maschine-bitwig) - Maschine MK3 integration for Bitwig using Encdr.
-- [reaKontrol](https://github.com/brummbrum/reaKontrol) and [jcsteh's fork](https://github.com/jcsteh/reaKontrol) - Komplete Kontrol integration for REAPER, referenced in the NI integration research.
-- [S4MK3-HID-MIDI-BRIDGE](https://github.com/jtoronto/S4MK3-HID-MIDI-BRIDGE) - HID-to-MIDI bridge for Traktor S4 MK3, useful as another NI hardware protocol example.
-
-### Credits
-
-Thanks to [maartenvantjonger](https://github.com/maartenvantjonger) for [Maschine Launcher](https://github.com/maartenvantjonger/maschinelauncher), a community tool that launches Maschine when a controller is connected.
-
-This is an independent community utility and is not affiliated with Native Instruments. Locally built binaries are unsigned.
+[Maschine Launcher](https://github.com/maartenvantjonger/maschinelauncher/pulls) is another community project for launching Maschine when a controller connects.
 
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE). This project is independent of Native Instruments. Locally built binaries are unsigned.

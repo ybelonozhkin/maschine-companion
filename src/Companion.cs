@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Text;
 using System.Collections.Generic;
@@ -10,6 +10,17 @@ using System.Globalization;
 using System.Windows.Forms;
 using Microsoft.Win32.SafeHandles;
 
+static class LaunchScreen {
+ public static byte[] Report(bool visible,bool bottom) {
+  byte[] report=new byte[265];byte[] header={0xe0,0,0,0,0,0x80,0,2,0};if(bottom)header[3]=2;Array.Copy(header,report,9);
+  for(int i=9;i<265;i++)report[i]=0xff;
+  if(visible && !bottom)for(int x=0;x<8;x++) {
+   const int y=13;int index=9+(y/8)*128+x;
+   report[index]=(byte)(report[index] & ~(1<<(y%8)));
+  } // 8-pixel underscore at the left edge of the first text row
+  return report;
+ }
+}
 class TimedPause {
  public DateTimeOffset? Until;
  public bool Active(DateTimeOffset now){return Until.HasValue && now<Until.Value;}
@@ -125,6 +136,12 @@ static class StandbyLight {
  static int busy;
  public static bool IsBusy {get{return Interlocked.CompareExchange(ref busy,0,0)!=0;}}
  public static void Set(string path,byte brightness){RunWrite(delegate{SetCore(path,brightness);});}
+ public static void Marker(string path,bool visible,Func<bool> allowed){RunWrite(delegate {
+  foreach(bool bottom in new[]{false,true}) {
+   if(!allowed())throw new Exception("Screen write skipped: native owner detected");
+   SetCore(path,0,LaunchScreen.Report(visible,bottom));
+  }
+ });}
  internal static void RunWrite(Action write) {
   if(Interlocked.CompareExchange(ref busy,1,0)!=0)throw new Exception("A previous HID write is still pending");
   Task<Exception> operation;
@@ -146,7 +163,7 @@ static class StandbyLight {
  [DllImport("kernel32.dll",SetLastError=true)] static extern bool GetOverlappedResult(SafeFileHandle file,IntPtr overlapped,out uint written,bool wait);
  [DllImport("kernel32.dll",SetLastError=true)] static extern bool CancelIoEx(SafeFileHandle file,IntPtr overlapped);
  // Shared write-only handle; never reads input or sends mode/feature reports.
- static void SetCore(string path,byte brightness) {
+ static void SetCore(string path,byte brightness,byte[] screen=null) {
   using(var file=CreateFile(path,0x40000000,3,IntPtr.Zero,3,0x40000000,IntPtr.Zero)) {
    if(file.IsInvalid)throw new Exception("HID shared write open error="+Marshal.GetLastWin32Error());
    IntPtr preparsed;if(!HidD_GetPreparsedData(file,out preparsed))throw new Exception("HID descriptor unavailable");
@@ -156,7 +173,7 @@ static class StandbyLight {
    if(length<81 || length>1024)throw new Exception("Unsupported HID output length="+length);
    // Community Mikro MK3 unified LED report: 0x80, first slot is Maschine.
    // Other LEDs are off in standby; never send while Maschine owns the workflow.
-   byte[] report=new byte[length];report[0]=0x80;report[1]=brightness;
+   byte[] report=new byte[length];if(screen!=null){if(screen.Length>length)throw new Exception("OLED report does not fit descriptor");Array.Copy(screen,report,screen.Length);}else{report[0]=0x80;report[1]=brightness;}
    IntPtr buffer=Marshal.AllocHGlobal(length);IntPtr ov=Marshal.AllocHGlobal(IntPtr.Size==8?32:20);
    using(var completion=new EventWaitHandle(false,EventResetMode.ManualReset)) {
     try {
@@ -179,9 +196,9 @@ class Companion : Form {
  [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern uint GetRawInputDeviceInfo(IntPtr device,uint command,IntPtr data,ref uint size);
  [DllImport("user32.dll",SetLastError=true)] static extern bool RegisterRawInputDevices(Registration[] devices,uint count,uint size);
  [DllImport("user32.dll",SetLastError=true)] static extern uint GetRawInputData(IntPtr input,uint command,IntPtr data,ref uint size,uint header);
- class Controller {public string Path;public HoldGate Hold=new HoldGate();public bool LedAttempted,LedSet;public int Action;public IntPtr CloseWindow;public uint ClosePid;}
+ class Controller {public string Path;public HoldGate Hold=new HoldGate();public bool LedAttempted,LedSet,MarkerSet;public int Action;public long PressedAt;public IntPtr CloseWindow;public uint ClosePid;}
  readonly Dictionary<IntPtr,Controller> controllers=new Dictionary<IntPtr,Controller>();readonly HashSet<uint> registered=new HashSet<uint>();
- readonly Stopwatch clock=Stopwatch.StartNew();readonly System.Windows.Forms.Timer timer=new System.Windows.Forms.Timer();NotifyIcon tray;StreamWriter log;Settings settings;string root;long lastScan=-1000,launchUntil;bool wasRunning;bool stopping;long lastProcessCheck=-1000;bool runningNow,ledBlockedNow,wasLedBlocked,dawBlockedNow;string dawDetails="";string status="",blockDetails="";ToolStripMenuItem statusItem,resumeItem,pauseItem,startupItem;bool suspended;long lastWake=-10000;string startupExecutable;readonly TimedPause pause=new TimedPause();Process launchedProcess;long focusDeadline,lastFocusCheck;IntPtr focusWindow;int focusAttempts;
+ readonly Stopwatch clock=Stopwatch.StartNew();readonly System.Windows.Forms.Timer timer=new System.Windows.Forms.Timer();NotifyIcon tray;StreamWriter log;Settings settings;string root;long lastScan=-1000,launchUntil;bool wasRunning;bool stopping;long lastProcessCheck=-1000;bool runningNow,ledBlockedNow,wasLedBlocked,dawBlockedNow;string dawDetails="";string status="",blockDetails="";ToolStripMenuItem statusItem,resumeItem,pauseItem,startupItem;bool suspended,sessionLocked,sessionNotifications,sessionReportedLocked,sessionDisconnected;long lastDesktopCheck=-1000;long lastWake=-10000;string startupExecutable;readonly TimedPause pause=new TimedPause();Process launchedProcess;long focusDeadline,lastFocusCheck;IntPtr focusWindow;int focusAttempts;
  bool logUnavailable;
  void Log(string text){try{if(logUnavailable)return;if(log.BaseStream.Length>=2*1024*1024){log.Flush();log.BaseStream.SetLength(0);log.BaseStream.Position=0;log.WriteLine("Log truncated at 2 MiB");}log.WriteLine(DateTimeOffset.Now.ToString("o")+" "+text);}catch(IOException){logUnavailable=true;}catch(UnauthorizedAccessException){logUnavailable=true;}}
  public Companion(string directory) {
@@ -190,7 +207,7 @@ class Companion : Form {
   ShowInTaskbar=false;WindowState=FormWindowState.Minimized;
   var menu=new ContextMenuStrip();statusItem=new ToolStripMenuItem("Starting companion..."){Enabled=false};menu.Items.Add(statusItem);pauseItem=new ToolStripMenuItem("Pause for 1 hour",null,(s,e)=>PauseOneHour());menu.Items.Add(pauseItem);resumeItem=new ToolStripMenuItem("Resume",null,(s,e)=>ResumeNow()){Enabled=false};menu.Items.Add(resumeItem);menu.Items.Add("Show status",null,(s,e)=>ShowStatus());menu.Items.Add("Reload config",null,(s,e)=>Reload());startupExecutable=System.Reflection.Assembly.GetExecutingAssembly().Location;startupItem=new ToolStripMenuItem("Start with Windows",null,(s,e)=>ToggleStartup());startupItem.Checked=StartupRegistration.Enabled(startupExecutable);menu.Items.Add(startupItem);menu.Items.Add("Open log folder",null,(s,e)=>Process.Start(Path.Combine(root,"logs")));menu.Items.Add("Exit",null,(s,e)=>Close());
   tray=new NotifyIcon{Icon=System.Drawing.SystemIcons.Application,Text="Maschine Companion",ContextMenuStrip=menu,Visible=true};
-  timer.Interval=50;timer.Tick+=(s,e)=>SafeTick();timer.Start();Log("started hold="+settings.HoldMs+" executable="+settings.Executable);Scan();SafeTick();
+  timer.Interval=50;timer.Tick+=(s,e)=>SafeTick();timer.Start();Log("started hold="+settings.HoldMs+" executable="+settings.Executable);sessionLocked=!SessionState.InputAvailable();Scan();sessionNotifications=SessionState.WTSRegisterSessionNotification(Handle,0);if(!sessionNotifications)Log("session notification registration unavailable");SafeTick();
  }
  void PauseOneHour(){
   FinishFocus();foreach(var c in controllers.Values){c.Action=0;c.Hold.CancelUntilRelease();try{if(c.LedSet && !NativeLightBlocked())StandbyLight.Set(c.Path,0);}catch(Exception ex){Log("pause LED cleanup: "+ex.Message);}c.LedSet=false;}
@@ -201,7 +218,7 @@ class Companion : Form {
  void ShowStatus(){MessageBox.Show(status+(blockDetails.Length>0?"\n"+blockDetails:"")+"\nWindows startup: "+(startupItem.Checked?"enabled":"disabled")+(runningNow && settings.EnableClose?"\nTo bring the configured app forward and request exit, hold for "+(settings.CloseHoldMs/1000.0).ToString("0.0",CultureInfo.InvariantCulture)+" s":"")+"\nConfig: "+Path.Combine(root,"companion.ini"),"Maschine Companion",MessageBoxButtons.OK,MessageBoxIcon.Information);}
  static string ProcessesLabel(string details){int pid=details.IndexOf(" PID ",StringComparison.Ordinal);return pid<0?details:details.Substring(0,pid);}
  void UpdateStatus(long now) {
-  string next=suspended?"Paused: computer is sleeping":pause.Active(DateTimeOffset.UtcNow)?"Paused until "+pause.Until.Value.ToLocalTime().ToString("HH:mm"):controllers.Count==0?"Controller disconnected":dawBlockedNow?"Paused: "+dawDetails:runningNow?"Running: "+ProcessesLabel(blockDetails):ledBlockedNow?"Paused: "+blockDetails:now<launchUntil?"Waiting after launch request":"Ready: hold Maschine for "+(settings.HoldMs/1000.0).ToString("0.0",CultureInfo.InvariantCulture)+" s";
+  string next=sessionLocked?"Paused: Windows is locked or desktop unavailable":suspended?"Paused: computer is sleeping":pause.Active(DateTimeOffset.UtcNow)?"Paused until "+pause.Until.Value.ToLocalTime().ToString("HH:mm"):controllers.Count==0?"Controller disconnected":dawBlockedNow?"Paused: "+dawDetails:runningNow?"Running: "+ProcessesLabel(blockDetails):ledBlockedNow?"Paused: "+blockDetails:now<launchUntil?"Waiting after launch request":"Ready: hold Maschine for "+(settings.HoldMs/1000.0).ToString("0.0",CultureInfo.InvariantCulture)+" s";
   if(next==status)return;status=next;statusItem.Text=next;tray.Text=next.Length>63?next.Substring(0,63):next;tray.Icon=runningNow?System.Drawing.SystemIcons.Information:System.Drawing.SystemIcons.Application;Log("status: "+next+(blockDetails.Length>0?"; "+blockDetails:""));
  }
  protected override void SetVisibleCore(bool value){base.SetVisibleCore(false);}
@@ -237,6 +254,8 @@ class Companion : Form {
  }
  void Tick() {
   if(stopping || suspended)return;long now=clock.ElapsedMilliseconds;
+  if(now-lastDesktopCheck>=500){lastDesktopCheck=now;SetSessionLocked(SessionState.ShouldBlock(sessionReportedLocked,sessionDisconnected,SessionState.InputAvailable()));}
+  if(sessionLocked){UpdateStatus(now);return;}
   if(pause.Until.HasValue && !pause.Active(DateTimeOffset.UtcNow)){pause.Resume();resumeItem.Enabled=false;pauseItem.Visible=true;lastProcessCheck=-1000;foreach(var c in controllers.Values){c.Action=0;c.Hold.CancelUntilRelease();c.LedAttempted=false;}Log("timed pause expired");}
   if(now-lastScan>=1000){lastScan=now;Scan();}
   if(now-lastProcessCheck>=500){lastProcessCheck=now;var snapshot=Processes.Observe(settings);runningNow=snapshot.Running;dawDetails=snapshot.DawDetails;dawBlockedNow=dawDetails.Length>0;ledBlockedNow=snapshot.LedBlocked;blockDetails=dawBlockedNow?dawDetails:snapshot.RunningDetails.Length>0?snapshot.RunningDetails:snapshot.NativeDetails;}
@@ -266,7 +285,7 @@ class Companion : Form {
    bool previouslyFired=c.Hold.IsFired;
    if(c.Action==2 && !WindowClose.ValidMain(settings.Executable,c.CloseWindow,c.ClosePid))c.Action=0;
    bool trigger=c.Hold.Tick(now,c.Action==2?settings.CloseHoldMs:settings.HoldMs,c.Action==0 || (c.Action==1 && (running || now<launchUntil)));
-   if(trigger && c.Action==1)Launch();
+   if(trigger && c.Action==1)Launch(c);
    else if(trigger && c.Action==2){FinishFocus();bool requested=Processes.DawBlockers(settings).Length==0 && WindowClose.Request(settings.Executable,c.CloseWindow,c.ClosePid);Log("normal close requested="+requested+" pid="+c.ClosePid+" hwnd="+c.CloseWindow);}
    else if(!previouslyFired && c.Hold.IsFired && !trigger)Log("hold ignored: no eligible action, focus changed, running program or launch cooldown");
    if(!settings.StandbyLed || c.LedAttempted || now<launchUntil || ledBlockedNow)continue;
@@ -276,39 +295,61 @@ class Companion : Form {
   FocusLaunchedWindow(now);
   UpdateStatus(now);
  }
- bool LedOutputBlocked(){return pause.Active(DateTimeOffset.UtcNow) || NativeLightBlocked();}
+ bool LedOutputBlocked(){return sessionLocked || suspended || pause.Active(DateTimeOffset.UtcNow) || NativeLightBlocked();}
  bool NativeLightBlocked(){return Processes.LedBlocked(settings.Executable) || Processes.DawBlockers(settings).Length>0;}
- void Launch() {
-  if(pause.Active(DateTimeOffset.UtcNow))return;
+ void ClearLaunchMarker(){
+  foreach(var c in controllers.Values)if(c.MarkerSet) {
+   try{if(!NativeLightBlocked()){StandbyLight.Marker(c.Path,false,delegate{return !NativeLightBlocked();});Log("launch marker cleared");}}
+   catch(Exception ex){Log("launch marker cleanup unavailable: "+ex.Message);}c.MarkerSet=false;
+  }
+ }
+ void ShowLaunchMarker(Controller c){c.MarkerSet=true;try{StandbyLight.Marker(c.Path,true,delegate{return !LedOutputBlocked();});Log("press marker shown");}catch(Exception ex){Log("press marker unavailable: "+ex.Message);}}
+ void Launch(Controller pressedController) {
+  if(sessionLocked || suspended || pause.Active(DateTimeOffset.UtcNow))return;
   if(StandbyLight.IsBusy){Log("launch skipped: HID write still pending");return;}
   if(Processes.Running(settings.Executable) || Processes.DawBlockers(settings).Length>0)return;
   launchUntil=clock.ElapsedMilliseconds+15000;
   try {
    foreach(var c in controllers.Values)if(c.LedSet && !LedOutputBlocked()){try{StandbyLight.Set(c.Path,0);c.LedSet=false;}catch(Exception ex){Log("LED handoff: "+ex.Message);}}
-   if(pause.Active(DateTimeOffset.UtcNow))return;
+   if(sessionLocked || suspended || pause.Active(DateTimeOffset.UtcNow))return;
   if(StandbyLight.IsBusy){Log("launch skipped: LED handoff remains pending");return;}
+   ClearLaunchMarker();
+   if(StandbyLight.IsBusy || LedOutputBlocked()){ClearLaunchMarker();Log("launch cancelled before process start");return;}
+   long elapsed=clock.ElapsedMilliseconds-pressedController.PressedAt;Log("launch command: press-to-command ms="+elapsed+" hold threshold ms="+settings.HoldMs+" overhead ms="+Math.Max(0,elapsed-settings.HoldMs));
    var process=Process.Start(new ProcessStartInfo{FileName=settings.Executable,Arguments=settings.Arguments,WorkingDirectory=Path.GetDirectoryName(settings.Executable),UseShellExecute=false,WindowStyle=ProcessWindowStyle.Normal});
    Log("launch requested pid="+(process==null?"unknown":process.Id.ToString()));
+   if(process==null)throw new Exception("Launch did not return an application process");
    if(process!=null) {
     FinishFocus();launchedProcess=process;focusDeadline=clock.ElapsedMilliseconds+30000;lastFocusCheck=-1000;focusWindow=IntPtr.Zero;focusAttempts=0;
     Log("foreground permission granted="+WindowFocus.AllowSetForegroundWindow((uint)process.Id));
    }
-  }catch(Exception ex){Log("launch failed: "+ex.Message);tray.ShowBalloonTip(5000,"Launch failed",ex.Message,ToolTipIcon.Error);}
+  }catch(Exception ex){ClearLaunchMarker();Log("launch failed: "+ex.Message);tray.ShowBalloonTip(5000,"Launch failed",ex.Message,ToolTipIcon.Error);}
  }
  void FinishFocus(){if(launchedProcess!=null){launchedProcess.Dispose();launchedProcess=null;}focusWindow=IntPtr.Zero;}
  void FocusLaunchedWindow(long now) {
   if(launchedProcess==null || now-lastFocusCheck<500)return;lastFocusCheck=now;
   try {
-   if(launchedProcess.HasExited){Log("foreground wait: launched process exited");FinishFocus();return;}
+   if(launchedProcess.HasExited){Log("foreground wait: launched process exited");FinishFocus();ClearLaunchMarker();return;}
    if(now>=focusDeadline){Log("foreground wait timed out");FinishFocus();return;}
    launchedProcess.Refresh();IntPtr hwnd=launchedProcess.MainWindowHandle;
    bool maschine=launchedProcess.ProcessName.StartsWith("Maschine",StringComparison.OrdinalIgnoreCase);
    if(!WindowFocus.Ready(hwnd,(uint)launchedProcess.Id,maschine)){focusWindow=IntPtr.Zero;return;}
+   foreach(var c in controllers.Values)c.MarkerSet=false; // native main window owns the screen now
    if(hwnd!=focusWindow){focusWindow=hwnd;return;}
    bool activated=WindowFocus.Activate(hwnd,(uint)launchedProcess.Id);focusAttempts++;
    Log("foreground attempt="+focusAttempts+" success="+activated+" hwnd="+hwnd);
    if(activated || focusAttempts>=3)FinishFocus();
   }catch(Exception ex){Log("foreground error: "+ex.Message);FinishFocus();}
+ }
+ void SetSessionLocked(bool locked){
+  if(locked==sessionLocked)return;
+  sessionLocked=locked;FinishFocus();
+  foreach(var c in controllers.Values){c.Action=0;c.Hold.CancelUntilRelease();
+   if(locked){try{if(c.LedSet && !NativeLightBlocked())StandbyLight.Set(c.Path,0);}catch(Exception ex){Log("lock LED cleanup: "+ex.Message);}c.LedSet=false;}
+   else c.LedAttempted=false;
+  }
+  if(locked)ClearLaunchMarker();else{lastScan=-1000;lastProcessCheck=-1000;retryTickAt=0;}
+  Log(locked?"session locked or desktop unavailable":"session unlocked: standby refresh scheduled");UpdateStatus(clock.ElapsedMilliseconds);
  }
  void SleepDetected(){suspended=true;FinishFocus();foreach(var c in controllers.Values){c.Action=0;c.Hold.CancelUntilRelease();}Log("system suspend");UpdateStatus(clock.ElapsedMilliseconds);}
  void WakeDetected(){
@@ -319,6 +360,11 @@ class Companion : Form {
  }
  protected override void WndProc(ref Message m) {
   try {
+  if(m.Msg==0x2b1){int change=m.WParam.ToInt32();
+   if(change==7)sessionReportedLocked=true;else if(change==8)sessionReportedLocked=false;
+   if(change==2 || change==4)sessionDisconnected=true;else if(change==1 || change==3)sessionDisconnected=false;
+   if(change==7 || change==8 || change==1 || change==2 || change==3 || change==4)SetSessionLocked(SessionState.ShouldBlock(sessionReportedLocked,sessionDisconnected,SessionState.InputAvailable()));
+  }
   if(m.Msg==0x218){int power=m.WParam.ToInt32();if(power==4)SleepDetected();else if(power==7 || power==18)WakeDetected();}
   if(m.Msg==0xfe){Scan();}
   if(m.Msg==0xff) {
@@ -334,14 +380,16 @@ class Companion : Form {
         bool pressed=(Marshal.ReadByte(p,start+1)&1)!=0;if(pressed!=c.Hold.IsDown) {
  Log("Maschine button "+(pressed?"down":"up"));
  if(pressed) {
+  c.PressedAt=clock.ElapsedMilliseconds;c.Hold.Input(true,c.PressedAt);
   c.Action=0;
-  if(suspended || pause.Active(DateTimeOffset.UtcNow) || Processes.DawBlockers(settings).Length>0)c.Action=0;
+  if(sessionLocked || suspended || pause.Active(DateTimeOffset.UtcNow) || Processes.DawBlockers(settings).Length>0)c.Action=0;
   else if(!Processes.Running(settings.Executable))c.Action=1;
   else if(settings.EnableClose && WindowClose.FindTarget(settings.Executable,out c.CloseWindow,out c.ClosePid))c.Action=2;
   Log("hold action="+(c.Action==1?"launch":c.Action==2?"close":"none"));
+  if(c.Action==1)ShowLaunchMarker(c);
  }
 }
-c.Hold.Input(pressed,clock.ElapsedMilliseconds);if(!pressed)c.Action=0;
+c.Hold.Input(pressed,clock.ElapsedMilliseconds);if(!pressed){c.Action=0;ClearLaunchMarker();}
        }
       }
      }
@@ -352,7 +400,7 @@ c.Hold.Input(pressed,clock.ElapsedMilliseconds);if(!pressed)c.Action=0;
   base.WndProc(ref m);
  }
  protected override void OnFormClosed(FormClosedEventArgs e) {
-  stopping=true;timer.Stop();timer.Dispose();FinishFocus();
+  stopping=true;if(sessionNotifications)SessionState.WTSUnRegisterSessionNotification(Handle);timer.Stop();timer.Dispose();FinishFocus();
   foreach(var c in controllers.Values){try{if(c.LedSet && !LedOutputBlocked())StandbyLight.Set(c.Path,0);}catch(Exception ex){Log("LED cleanup: "+ex.Message);}}
   tray.Visible=false;tray.ContextMenuStrip.Dispose();tray.Dispose();Log("stopped");try{log.Dispose();}catch(IOException){}base.OnFormClosed(e);
  }
@@ -383,6 +431,20 @@ static class Tests {
    }finally{release.Set();Check(SpinWait.SpinUntil(delegate{return !StandbyLight.IsBusy;},2000),"HID worker completes safely");}
   }
   Check(StartupRegistration.Command(@"C:\Program Files\Maschine Companion\app.exe")=="\""+@"C:\Program Files\Maschine Companion\app.exe"+"\"","startup path is quoted");
+  foreach(bool bottom in new[]{false,true}) {
+   var bar=LaunchScreen.Report(true,bottom);var blank=LaunchScreen.Report(false,bottom);Check(bar.Length==265 && bar[0]==0xe0 && bar[3]==(bottom?2:0),"OLED report header");
+   int lit=0;
+   for(int y=0;y<16;y++)for(int x=0;x<128;x++) {
+    bool on=(bar[9+(y/8)*128+x] & (1<<(y%8)))==0;int globalY=y+(bottom?16:0);
+    if(on){lit++;Check(x<8 && globalY==13,"underscore stays at left edge in first row");}
+   }
+   Check(lit==(bottom?0:8),"8-pixel first-row underscore only");
+   for(int i=9;i<265;i++)Check(blank[i]==0xff,"blank OLED pixels");
+  }
+  Check(SessionState.ShouldBlock(true,false,true),"lock notification wins over available desktop");
+  Check(SessionState.ShouldBlock(false,true,true),"disconnected session stays blocked");
+  Check(SessionState.ShouldBlock(false,false,false),"secure desktop blocks actions");
+  Check(!SessionState.ShouldBlock(false,false,true),"unlock plus normal desktop permits actions");
   var timed=new TimedPause();var instant=new DateTimeOffset(2026,10,11,12,0,0,TimeSpan.Zero);timed.Start(instant);Check(timed.Active(instant.AddMinutes(59)),"pause lasts one hour");Check(!timed.Active(instant.AddHours(1)),"pause expires at deadline");timed.Start(instant);timed.Resume();Check(!timed.Active(instant),"manual resume");
   var h=new HoldGate();h.Input(true,0);Check(!h.Tick(1199,1200,false),"short hold");Check(h.Tick(1200,1200,false),"threshold");Check(!h.Tick(2500,1200,false),"one launch per hold");
   h.Input(false,2600);h.Input(true,2700);Check(!h.Tick(3900,1200,true),"running block");Check(!h.Tick(4000,1200,false),"no delayed launch after blocked hold");
