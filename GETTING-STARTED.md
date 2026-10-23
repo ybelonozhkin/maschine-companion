@@ -7,7 +7,7 @@ Use the Windows x64 build from this repository's Releases page. Extract the enti
 - Windows 11 x64 and Maschine Mikro MK3 in native mode.
 - The NI controller driver. The default launcher configuration expects Maschine 3 at its usual installation path; edit `Executable` in `companion.ini` if yours is elsewhere.
 - For Live integration: Ableton Live 12 and Windows MIDI Services with loopback support. Tested on Live 12.4.6 Standard; other setups need compatibility testing.
-- Microsoft Visual C++ Redistributable 2015-2022, x64: [Microsoft download](https://aka.ms/vs/17/release/vc_redist.x64.exe). Install it if the app reports a missing `VCRUNTIME140` or `MSVCP140` DLL. Do not download individual runtime DLLs from other sites.
+- The latest Microsoft Visual C++ v14 Redistributable, x64: [Microsoft download](https://aka.ms/vc14/vc_redist.x64.exe). Install or update it before using the Live integration. An older runtime may cause missing-DLL or entry-point errors. See [Microsoft's runtime requirements](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist).
 
 Build tools are not required to run this download.
 
