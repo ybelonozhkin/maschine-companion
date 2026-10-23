@@ -16,7 +16,7 @@ On Windows x64, build the launcher and run its logic, HID decoder and Note Repea
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Companion.ps1
 ```
 
-For the full Live build, install Visual Studio C++ Build Tools and Windows SDK 10.0.26100.0, then run:
+For the full Live build:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Ableton.ps1
@@ -33,6 +33,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-Distribution.ps
 The executable is written to `bin\MaschineCompanion.exe`. `Prepare-Distribution.ps1` stages the complete build in `dist`; add `-Archive` to produce the portable ZIP. Source archives have no Git metadata, so clone the repository to run the distribution step, which records the source commit. You can build and run the app from either source format.
 
 The MIDI SDK download is pinned by version and SHA-256 in `Build-Ableton.ps1`. Exit the companion before rebuilding that copy. Use a fresh checkout for each distribution build; staging refuses to overwrite an existing distribution folder.
+
+On a PC with Windows MIDI Services installed, exit the companion and run `powershell -NoProfile -ExecutionPolicy Bypass -File .\Test-Midi.ps1` to check MIDI delivery and note releases. This test creates and removes a temporary MIDI pair.
+
+API references: [Microsoft MIDI SDK](https://github.com/microsoft/MIDI/releases/tag/inbox-preview-11) and [Live Clip API](https://docs.cycling74.com/apiref/lom/clip/). See also [Live's keyboard shortcuts](https://www.ableton.com/en/live-manual/12/live-keyboard-shortcuts/) and [remote script installation](https://help.ableton.com/hc/en-us/articles/209072009-Installing-third-party-remote-scripts).
 
 ## GitHub builds
 

@@ -62,8 +62,8 @@ To remove the app, disable Start with Windows, exit the companion and remove its
 
 ## Unsigned builds
 
-The EXE and our native DLL are unsigned. Windows may warn about an unknown publisher. Check that the download came from this repository and verify its SHA-256 checksum before deciding whether to run it. Smart App Control or a managed computer's policies may block the build entirely. We do not recommend turning off system-wide protection to use the app. [Microsoft explains the distinction](https://learn.microsoft.com/windows/apps/package-and-deploy/smartscreen-reputation).
+The build is unsigned. Windows may show an unknown-publisher warning; Smart App Control or workplace policies may block it. Download from this repository and check the SHA-256 checksum. See [Microsoft's explanation](https://learn.microsoft.com/windows/apps/package-and-deploy/smartscreen-reputation).
 
-`BUILD-INFO.json` records the version and source commit. `SHA256SUMS.txt` lists hashes for the files in the extracted build. These identify the downloaded files; they are not a Windows publisher signature.
+`BUILD-INFO.json` identifies the version and source commit; `SHA256SUMS.txt` lists file checksums.
 
 For source builds, see [Build and test](CONTRIBUTING.md#build-and-test). Build failures and hardware problems can be reported in the repository's Issues. Include the version and a short reproduction; review logs for local paths before sharing them.

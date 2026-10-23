@@ -26,8 +26,8 @@ DawProcesses=Ableton Live*;FL;FL64;FL (scaled);FL64 (scaled);FL (compatible memo
 | `PauseWhenDawRunning` | Pause for listed DAWs when `true` (default). Set `false` to ignore the list. |
 | `DawProcesses` | Process names separated by `;`. A trailing `*` matches a prefix. Names are case-insensitive; `.exe` is optional. An empty list disables DAW blocking. |
 
-The defaults cover Ableton Live, FL Studio, REAPER, Cubase, Nuendo, Studio One, Bitwig Studio, Pro Tools, and Cakewalk/Sonar. To add another host, copy its executable name from Task Manager's **Details** tab. These presets detect processes; they are not a claim that every host has been tested with the controller.
+To add a DAW, copy its executable name from Task Manager's **Details** tab into `DawProcesses`.
 
-Live integration settings are `EnableAbleton` (default `false`), `FixedVelocity` (1-127, default 127), and optional `MidiActivityInputs`. See the [Live guide](../ableton/README.md) before enabling them. When enabled and connected to its script, the integration handles Live instead of leaving the controller idle under DAW blocking.
+For Live, set `EnableAbleton=true`. `FixedVelocity` sets Fixed Vel (1-127, default 127); `MidiActivityInputs` lists other controllers whose strikes should flash the pads. See the [Live guide](../ableton/README.md) for setup.
 
 For setup, controller controls and the tray menu, see the [launcher guide](README.md).

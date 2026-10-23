@@ -25,7 +25,7 @@ Tested with **Live 12.4.6 Standard on Windows 11 x64**. The companion uses the M
 | Select and mix tracks (navigation: beta) | Group + arrows select tracks; Group + Shift + right creates a MIDI track. Mute, Solo and Volume affect the selected track. |
 | Change expression | Fixed Vel / 16 Vel, Pitch and Mod on the Smart Strip. |
 
-See [installation and requirements](GETTING-STARTED.md#ableton-live-installation) and the [full controls guide](ableton/README.md). Arp Rhythm and track navigation are beta features. Track arming remains manual. Before loading Maschine as a plug-in, choose **Pause** in the tray; choose **Resume** after releasing the controller from Maschine.
+See [installation and requirements](GETTING-STARTED.md#ableton-live-installation) and the [full controls guide](ableton/README.md). Arm tracks manually for recording. Before loading Maschine as a plug-in, choose **Pause** in the tray; choose **Resume** after releasing the controller from Maschine.
 
 ## Download or build
 
