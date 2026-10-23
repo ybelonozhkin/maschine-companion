@@ -1,8 +1,9 @@
+$projectRoot = Split-Path -Parent $PSScriptRoot
 $ErrorActionPreference = 'Stop'
-Set-Location $PSScriptRoot
-if (Get-Process -Name 'MaschineCompanion' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq (Join-Path $PSScriptRoot 'bin\MaschineCompanion.exe') }) { throw 'Exit the companion from its tray menu before building.' }
+Set-Location $projectRoot
+if (Get-Process -Name 'MaschineCompanion' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq (Join-Path $projectRoot 'bin\MaschineCompanion.exe') }) { throw 'Exit the companion from its tray menu before building.' }
 New-Item -ItemType Directory -Force bin | Out-Null
-if (!(Test-Path -LiteralPath (Join-Path $PSScriptRoot 'companion.ini'))) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'companion.example.ini') -Destination (Join-Path $PSScriptRoot 'companion.ini') }
+if (!(Test-Path -LiteralPath (Join-Path $projectRoot 'companion.ini'))) { Copy-Item -LiteralPath (Join-Path $projectRoot 'companion.example.ini') -Destination (Join-Path $projectRoot 'companion.ini') }
 $framework = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
 $uiaArgs = @("/reference:$framework\WPF\UIAutomationClient.dll", "/reference:$framework\WPF\UIAutomationTypes.dll", "/reference:$framework\WPF\WindowsBase.dll")
 if (!(Test-Path -LiteralPath "$framework\csc.exe")) { throw "The x64 .NET Framework compiler was not found: $framework\csc.exe" }
@@ -17,10 +18,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Compilation failed' }
 
 # Keep notices beside every locally built executable, including launcher-only builds.
 Copy-Item -LiteralPath 'LICENSE','THIRD-PARTY-NOTICES.md' -Destination bin
-$licenseOutput = Join-Path $PSScriptRoot 'bin\LICENSES'
+$licenseOutput = Join-Path $projectRoot 'bin\LICENSES'
 New-Item -ItemType Directory -Force -Path $licenseOutput | Out-Null
 foreach ($notice in 'microsoft-midi-MIT.txt','cppwinrt-MIT.txt','r00tman-MIT.txt','openav-BSD-3-Clause.txt') {
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "LICENSES\$notice") -Destination (Join-Path $licenseOutput $notice)
+    Copy-Item -LiteralPath (Join-Path $projectRoot "LICENSES\$notice") -Destination (Join-Path $licenseOutput $notice)
 }
 
 & "$framework\csc.exe" /nologo /target:exe /platform:x64 /out:bin\MikroInputTests.exe src\MikroInput.cs tests\MikroInputTests.cs

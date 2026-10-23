@@ -1,5 +1,5 @@
 @echo off
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0.."
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Capture-Hid.ps1"
 if errorlevel 1 pause

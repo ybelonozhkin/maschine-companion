@@ -1,13 +1,14 @@
-﻿param([ValidateRange(1,3600)][int]$DurationSeconds=180)
+param([ValidateRange(1,3600)][int]$DurationSeconds=180)
+$projectRoot = Split-Path -Parent $PSScriptRoot
 $ErrorActionPreference='Stop'
 # Metadata-only: no pipe connection, IPC messages, HID reads/writes, or ownership requests.
-$config=Join-Path $PSScriptRoot 'companion.ini'
+$config=Join-Path $projectRoot 'companion.ini'
 $rules=@('Ableton Live*')
 if(Test-Path -LiteralPath $config){
  $line=Get-Content -LiteralPath $config | Where-Object {$_ -match '^\s*DawProcesses\s*='} | Select-Object -Last 1
  if($line){$rules=@(($line -split '=',2)[1] -split ';' | ForEach-Object {$_.Trim() -replace '(?i)\.exe$',''} | Where-Object {$_})}
 }
-$folder=Join-Path $PSScriptRoot 'logs'
+$folder=Join-Path $projectRoot 'logs'
 New-Item -ItemType Directory -Path $folder -Force | Out-Null
 $path=Join-Path $folder ('ni-ownership-'+(Get-Date -Format 'yyyyMMdd-HHmmss')+'.jsonl')
 $timer=[Diagnostics.Stopwatch]::StartNew()
