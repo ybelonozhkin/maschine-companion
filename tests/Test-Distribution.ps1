@@ -6,7 +6,8 @@ $package = $packages[0].FullName
 $expected = @(
     'bin/MaschineCompanion.exe','bin/CompanionMidi.dll','bin/Windows.Devices.Midi2.dll','bin/Windows.Devices.Midi2.pri',
     'Start-Companion.cmd','Install-AbletonScript.ps1','companion.example.ini','companion.ini','README.md','CHANGELOG.md','ROADMAP.md',
-    'LICENSE','THIRD-PARTY-NOTICES.md','GETTING-STARTED.md','CONTRIBUTING.md','BUILD-INFO.json','SHA256SUMS.txt','ableton/README.md','assets/maschine-button.svg'
+    'LICENSE','THIRD-PARTY-NOTICES.md','GETTING-STARTED.md','CONTRIBUTING.md','BUILD-INFO.json','SHA256SUMS.txt','ableton/README.md','assets/maschine-button.svg',
+    'launcher/README.md','launcher/CONFIGURATION.md'
 )
 foreach ($name in @('__init__.py','model.py','activity.py','clip_activity.py','keyboard.py','editing.py','selection.py','mixer.py','browser.py','sequencer.py','pattern.py','surface.py')) {
     $expected += "ableton/MikroCompanion/$name"

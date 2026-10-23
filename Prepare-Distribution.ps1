@@ -20,7 +20,10 @@ foreach ($file in @('Start-Companion.cmd','Install-AbletonScript.ps1','companion
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $output
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'companion.example.ini') -Destination (Join-Path $output 'companion.ini')
-New-Item -ItemType Directory -Path (Join-Path $output 'ableton\MikroCompanion'),(Join-Path $output 'LICENSES'),(Join-Path $output 'assets') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $output 'ableton\MikroCompanion'),(Join-Path $output 'launcher'),(Join-Path $output 'LICENSES'),(Join-Path $output 'assets') -Force | Out-Null
+foreach ($file in @('README.md','CONFIGURATION.md')) {
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "launcher\$file") -Destination (Join-Path $output 'launcher')
+}
 $scriptFiles = @('__init__.py','model.py','activity.py','clip_activity.py','keyboard.py','editing.py','selection.py','mixer.py','browser.py','sequencer.py','pattern.py','surface.py')
 foreach ($file in $scriptFiles) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "ableton\MikroCompanion\$file") -Destination (Join-Path $output 'ableton\MikroCompanion')

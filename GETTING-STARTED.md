@@ -2,7 +2,7 @@
 
 Download `MaschineCompanion-<version>-win-x64.zip` from the project's [Releases page](https://github.com/ybelonozhkin/maschine-companion/releases). Choose this file to run the app; the **Source code** downloads are for compiling it yourself.
 
-Extract the entire folder to a writable location before starting the app. Keep `bin`, `ableton` and `LICENSES` together with the files at the top level.
+Extract the entire folder to a writable location before starting the app. Keep `bin`, `ableton`, `launcher` and `LICENSES` together with the files at the top level.
 
 ## Requirements
 
@@ -18,6 +18,8 @@ Build tools and Python are not required to run this download. Put Mikro in nativ
 1. Check the `Executable` path in `companion.ini`.
 2. Run `Start-Companion.cmd`. The app appears in the system tray; its icon may be hidden under the tray overflow arrow.
 3. Connect Mikro. The Maschine button lights when launching is available. Hold it to launch Maschine; hold it again to request a normal exit.
+
+See [launcher controls and the tray menu](launcher/README.md) and the [configuration reference](launcher/CONFIGURATION.md) for more options.
 
 ## Ableton Live installation
 
