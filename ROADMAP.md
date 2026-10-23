@@ -2,6 +2,10 @@
 
 The current development build covers playing instruments, sequencing and editing MIDI, launching clips, browsing sounds and controlling transport. The proposals below are not implemented yet.
 
+## Chords
+
+Add a dedicated **Chords** mode for playing chords from the pads. The chord layout and controls still need to be defined.
+
 ## Group: select tracks with pads
 
 Hold **Group** to show up to 16 Live tracks in their colors. Press a pad to select a track, then release Group to return to the previous playing mode. The encoder would move between banks of tracks.
