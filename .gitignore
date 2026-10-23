@@ -2,7 +2,10 @@ bin/
 logs/
 research/
 tools/
+dist/
 companion.ini
+__pycache__/
+*.pyc
 
 # Local development notes
 /docs/

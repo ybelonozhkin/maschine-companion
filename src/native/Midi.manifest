@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity type="win32" name="MaschineCompanion.NativeMidi" version="0.0.0.1" />
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3"><security><requestedPrivileges><requestedExecutionLevel level="asInvoker" uiAccess="false" /></requestedPrivileges></security></trustInfo>
+  <file name="Windows.Devices.Midi2.dll">
+    <activatableClass xmlns="urn:schemas-microsoft-com:winrt.v1" name="Windows.Devices.Midi2.MidiApi" threadingModel="both" />
+    <activatableClass xmlns="urn:schemas-microsoft-com:winrt.v1" name="Windows.Devices.Midi2.Transports.Loopback.MidiLoopbackManager" threadingModel="both" />
+    <activatableClass xmlns="urn:schemas-microsoft-com:winrt.v1" name="Windows.Devices.Midi2.Transports.Loopback.MidiLoopbackEndpointDefinition" threadingModel="both" />
+    <activatableClass xmlns="urn:schemas-microsoft-com:winrt.v1" name="Windows.Devices.Midi2.Transports.Loopback.MidiLoopbackCreationConfig" threadingModel="both" />
+    <activatableClass xmlns="urn:schemas-microsoft-com:winrt.v1" name="Windows.Devices.Midi2.Transports.Loopback.MidiLoopbackRemovalConfig" threadingModel="both" />
+  </file>
+</assembly>
