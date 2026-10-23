@@ -28,7 +28,7 @@ $commands = @"
 @echo off
 call "$visualStudio\VC\Auxiliary\Build\vcvars64.bat" >nul
 if errorlevel 1 exit /b 1
-cl /nologo /std:c++17 /EHsc /MD /LD /I "$generated" /I "$windowsSdk\Include\10.0.26100.0\cppwinrt" "$PSScriptRoot\src\native\CompanionMidi.cpp" /Fo"$PSScriptRoot\bin\CompanionMidi.obj" /Fe"$PSScriptRoot\bin\CompanionMidi.dll" /link windowsapp.lib
+cl /nologo /std:c++20 /EHsc /MD /LD /I "$generated" /I "$windowsSdk\Include\10.0.26100.0\cppwinrt" "$PSScriptRoot\src\native\CompanionMidi.cpp" /Fo"$PSScriptRoot\bin\CompanionMidi.obj" /Fe"$PSScriptRoot\bin\CompanionMidi.dll" /link windowsapp.lib
 "@
 $commandFile = Join-Path $PSScriptRoot 'bin\build-native-midi.cmd'
 Set-Content -LiteralPath $commandFile -Value $commands -Encoding ASCII
