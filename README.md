@@ -10,7 +10,12 @@ Development since **0.2.0** adds the Live integration and an indefinite pause co
 
 ## Download or build
 
-Use a Windows x64 download from [Releases](https://github.com/ybelonozhkin/maschine-companion/releases) when available; follow [Getting started](GETTING-STARTED.md). Development builds are under [Actions](https://github.com/ybelonozhkin/maschine-companion/actions/workflows/build.yml): open a successful run and download `windows-x64` from Artifacts. GitHub requires sign-in for artifact downloads. Release 0.2.0 predates the Live integration.
+The project is available as source and as a ready-made Windows x64 build:
+
+- **Run it:** download `MaschineCompanion-<version>-win-x64.zip` from [Releases](https://github.com/ybelonozhkin/maschine-companion/releases) when available. Extract it and open `GETTING-STARTED.md` for requirements, installation and Live MIDI settings. The ZIP includes the app, its DLLs, the Live script and the controls guide.
+- **Build it:** clone this repository or download the release's **Source code** archive. Follow the [build instructions](CONTRIBUTING.md#build-and-test). Source archives contain the build scripts and tests.
+
+Development builds are under [Actions](https://github.com/ybelonozhkin/maschine-companion/actions/workflows/build.yml): open a successful run and download `windows-x64` from Artifacts. Extract that artifact to find the portable ZIP and its checksum. GitHub requires sign-in for artifact downloads. Release 0.2.0 predates the Live integration.
 
 The ready-made build includes the MIDI bridge and Live script. Build tools are needed only when compiling the source. These builds are unsigned; Windows security policies may warn or block them. See [download requirements](GETTING-STARTED.md#unsigned-builds).
 

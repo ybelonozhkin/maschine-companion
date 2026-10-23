@@ -6,6 +6,10 @@ Changes and tests should describe the behavior they add or fix. Keep controller 
 
 ## Build and test
 
+Clone the repository or extract a release's **Source code** archive into a writable folder. Use the release tag when building a published version; the development branch may contain newer changes. Open Windows PowerShell in the source folder.
+
+The launcher build uses the x64 .NET Framework 4.x compiler included with Windows. The full Live build also needs Visual Studio C++ Build Tools with **Desktop development with C++**, Windows SDK **10.0.26100.0**, and internet access to download the pinned MIDI SDK. Install Python **3.11** to run the Live script tests. A controller and Live are not needed for these build-time tests.
+
 On Windows x64, build the launcher and run its logic, HID decoder and Note Repeat tests:
 
 ```powershell
@@ -17,11 +21,18 @@ For the full Live build, install Visual Studio C++ Build Tools and Windows SDK 1
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Ableton.ps1
 python -m unittest discover -s tests -p "test_ableton_*.py"
+```
+
+To prepare a distribution from a Git clone:
+
+```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Prepare-Distribution.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-Distribution.ps1
 ```
 
-The MIDI SDK download is pinned by version and SHA-256 in `Build-Ableton.ps1`. Python 3.11 runs the script tests without Live. Exit the companion before rebuilding that copy. Use a fresh checkout for each distribution build; staging refuses to overwrite an existing distribution folder.
+The executable is written to `bin\MaschineCompanion.exe`. `Prepare-Distribution.ps1` stages the complete build in `dist`; add `-Archive` to produce the portable ZIP. Source archives have no Git metadata, so clone the repository to run the distribution step, which records the source commit. You can build and run the app from either source format.
+
+The MIDI SDK download is pinned by version and SHA-256 in `Build-Ableton.ps1`. Exit the companion before rebuilding that copy. Use a fresh checkout for each distribution build; staging refuses to overwrite an existing distribution folder.
 
 ## GitHub builds
 
