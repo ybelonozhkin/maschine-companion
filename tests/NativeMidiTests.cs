@@ -596,4 +596,3 @@ class NativeMidiTests {
   Console.WriteLine("PASS Windows MIDI loopback, native HID mapping, pause releases and suppresses notes, async panel output, endpoint cleanup");return 0;
  }
 }
-

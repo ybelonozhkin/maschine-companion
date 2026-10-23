@@ -1,5 +1,6 @@
 param([string]$SdkPath)
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 Set-Location $PSScriptRoot
 New-Item -ItemType Directory -Force bin | Out-Null
 if (Get-Process -Name MaschineCompanion -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq (Join-Path $PSScriptRoot 'bin\MaschineCompanion.exe') }) { throw 'Exit the companion before building.' }
