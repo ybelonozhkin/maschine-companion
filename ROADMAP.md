@@ -1,6 +1,6 @@
 # Development plan
 
-The current development build covers playing instruments, sequencing and editing MIDI, launching clips, browsing sounds and controlling transport. The proposals below are not implemented yet.
+Version 0.3.0 covers playing instruments, sequencing and editing MIDI, launching clips, browsing sounds and controlling transport. The proposals below are not implemented yet.
 
 ## Chords
 

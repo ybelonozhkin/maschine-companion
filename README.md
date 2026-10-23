@@ -1,12 +1,31 @@
 # Maschine Mikro MK3 Companion
 
-A Windows tray app for the Maschine Mikro MK3: launch and close Maschine, or use the controller to play and edit music in Ableton Live.
+Use the Maschine Mikro MK3 as a control surface for Ableton Live on Windows. Play drums and instruments, record MIDI, build patterns in the step sequencer, edit notes, browse sounds and launch clips from the controller.
 
-The <img src="assets/maschine-button.svg" alt="Maschine" width="20" height="20"> button lights up when the companion is ready. Hold it to launch Maschine. Hold it again to bring the open window forward and request a normal exit.
+Pads show track and clip colors, selected sounds and note activity. The OLED shows the parameter name and its value.
 
-The optional Live integration adds drum and scale layouts, a step sequencer, note editing, Note Repeat, browser navigation and transport controls. Pads show track colors, selected sounds and note activity. The OLED shows the parameter name above its value. Hold Group to see the selected track.
+Version **0.3.0**. See the [changelog](CHANGELOG.md) for changes and the [roadmap](ROADMAP.md) for planned features.
 
-Development since **0.2.0** adds the Live integration and an indefinite pause command. Arp Rhythm and track navigation are beta features. See the [changelog](CHANGELOG.md) for changes since 0.2.0 and the [development plan](ROADMAP.md) for proposed additions.
+## Ableton Live
+
+Tested with **Live 12.4.6 Standard on Windows 11 x64**. The companion uses the Mikro in native mode and connects to a Live Remote Script. Enable the integration during setup.
+
+| Feature | Controls |
+| --- | --- |
+| Play drums and instruments | Pad Mode; encoder changes note banks. |
+| Play scales | Keyboard; arrows choose Root Note, Scale or Scale Mode; encoder changes the value. |
+| Repeat notes | Hold Note Repeat; arrows choose Rate or Swing, encoder changes the value. |
+| Play arpeggios | Note Repeat in Keyboard mode; note order, octaves, gate, swing and Latch. Arp Rhythm is beta. |
+| Edit a pattern | Step; encoder changes pages, Select auditions sounds, Duplicate doubles the loop. |
+| Launch clips | Pattern; 4-by-4 Session grid, encoder scrolls scenes, Shift + encoder scrolls track columns. |
+| Launch scenes | Scene; four pads in the right column, encoder scrolls scenes. |
+| Select and edit notes | Events and the editing commands printed on the pads. |
+| Load sounds | Browse; encoder navigates, press to expand or load, Favorites toggles the red Collection. |
+| Control playback | Play, Stop, Rec, Restart, Tap and Follow; Shift accesses Loop and Metronome. |
+| Select and mix tracks (navigation: beta) | Group + arrows select tracks; Group + Shift + right creates a MIDI track. Mute, Solo and Volume affect the selected track. |
+| Change expression | Fixed Vel / 16 Vel, Pitch and Mod on the Smart Strip. |
+
+See [installation and requirements](GETTING-STARTED.md#ableton-live-installation) and the [full controls guide](ableton/README.md). Arp Rhythm and track navigation are beta features. Track arming remains manual. Before loading Maschine as a plug-in, choose **Pause** in the tray; choose **Resume** after releasing the controller from Maschine.
 
 ## Download or build
 
@@ -19,27 +38,9 @@ Development builds are under [Actions](https://github.com/ybelonozhkin/maschine-
 
 The ready-made build includes the MIDI bridge and Live script. Build tools are needed only when compiling the source. These builds are unsigned; Windows security policies may warn or block them. See [download requirements](GETTING-STARTED.md#unsigned-builds).
 
-## Ableton Live
-
-The integration is opt-in and was tested with **Live 12.4.6 Standard on Windows 11 x64**. It uses the Mikro in native mode and installs a Live Remote Script.
-
-| Feature | Controls |
-| --- | --- |
-| Play drums and instruments | Pad Mode; encoder changes note banks. |
-| Play scales | Keyboard; arrows choose Root Note, Scale or Scale Mode; encoder changes the value. |
-| Repeat notes | Hold Note Repeat; arrows choose Rate or Swing, encoder changes the value. |
-| Edit a pattern | Step; encoder changes pages, Select auditions sounds, Duplicate doubles the loop. |
-| Launch clips | Pattern; 4-by-4 Session grid, encoder scrolls scenes, Shift + encoder scrolls track columns. |
-| Launch scenes | Scene; four pads in the right column, encoder scrolls scenes. |
-| Select and edit notes | Events and the editing commands printed on the pads. |
-| Load sounds | Browse; encoder navigates, press to expand or load, Favorites toggles the red Collection. |
-| Control playback | Play, Stop, Rec, Restart, Tap and Follow; Shift accesses Loop and Metronome. |
-| Select and mix tracks (navigation: beta) | Group + arrows select tracks; Group + Shift + right creates a MIDI track. Mute, Solo and Volume affect the selected track. |
-| Change expression | Fixed Vel / 16 Vel, Pitch and Mod on the Smart Strip. |
-
-Start with the [Live setup and controls](ableton/README.md#setup). Live integration requires Windows MIDI Services support. Compiling it from source also requires C++ tools. Track arming remains manual. Before loading Maschine as a plug-in, choose **Pause** in the tray; choose **Resume** after releasing the controller from Maschine.
-
 ## Maschine launcher
+
+The companion also lets you launch Maschine or request a normal exit by holding the Maschine button.
 
 See [setup and controls](launcher/README.md) for installation, the tray menu and troubleshooting, or [configuration](launcher/CONFIGURATION.md) for `companion.ini` settings.
 

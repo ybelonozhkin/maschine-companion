@@ -42,9 +42,9 @@ Hosted runners do not test a physical Mikro, Live, MIDI Services loopback operat
 
 ## Release
 
-1. Review the changes since the previous release in `CHANGELOG.md`, including beta labels and compatibility limits. Check the version in `src/AssemblyInfo.cs`.
+1. Review the version's entry in `CHANGELOG.md`, including beta labels and compatibility limits. Its version must match `src/AssemblyInfo.cs`.
 2. Build and test from a clean commit. Check launch/exit, Live connection, pads, transport and USB reconnection on hardware.
-3. Push a tag matching the application version, such as `v0.3.0`. Both build jobs must pass. The workflow attaches the portable build and its SHA-256 checksum to a **draft** GitHub Release, using the Unreleased changelog section as its description.
+3. Push a tag matching the application version, such as `v0.3.0`. Both build jobs must pass. The workflow attaches the portable build and its SHA-256 checksum to a **draft** GitHub Release, using the matching version's changelog entry as its description.
 4. Download and test that build. Review the draft before publishing it manually. Date the changelog entry when the release is published.
 
 `Prepare-Distribution.ps1 -Archive` creates the same ZIP locally. The package uses an explicit file list and copies the example config. Local `companion.ini`, logs, diagnostic binaries and research directories are excluded. `BUILD-INFO.json` records the source commit and whether its working tree had changes. Checksums identify the files; they do not sign the Windows executables.

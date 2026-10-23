@@ -2,7 +2,7 @@
 
 All notable changes are documented here, using [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0]
 
 Changes since 0.2.0.
 

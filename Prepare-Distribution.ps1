@@ -42,10 +42,11 @@ $hashes = foreach ($file in Get-ChildItem -LiteralPath $output -Recurse -File | 
     '{0}  {1}' -f (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $relative
 }
 $hashes | Set-Content -LiteralPath (Join-Path $output 'SHA256SUMS.txt') -Encoding ASCII
-# Use the changelog's current development section as the draft release notes.
+# Use the changelog entry matching the application version for the draft release.
 $changelog = Get-Content -LiteralPath CHANGELOG.md -Raw
-$notes = [regex]::Match($changelog, '(?s)## \[Unreleased\]\s*(.*?)(?=\r?\n## \[|\z)').Groups[1].Value.Trim()
-if (!$notes) { throw 'The Unreleased changelog section is empty.' }
+$entryPattern = '(?ms)^## \[' + [regex]::Escape($version) + '\][^\r\n]*\r?\n(.*?)(?=^## \[|\z)'
+$notes = [regex]::Match($changelog, $entryPattern).Groups[1].Value.Trim()
+if (!$notes) { throw "The changelog entry for $version is missing or empty." }
 New-Item -ItemType Directory -Force -Path $distribution | Out-Null
 $notes | Set-Content -LiteralPath (Join-Path $distribution 'RELEASE-NOTES.md') -Encoding UTF8
 if ($Archive) {
