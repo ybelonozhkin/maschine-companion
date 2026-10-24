@@ -18,6 +18,7 @@ from .navigation import Navigation
 from .browser import Browser
 from .sequencer import Sequencer
 from .pattern import PatternGrid
+from .ownership import inspect_song
 
 
 class MikroCompanion(ControlSurface):
@@ -31,6 +32,9 @@ class MikroCompanion(ControlSurface):
         self._layout_dirty = True
         self._state_dirty = True
         self._last_sent = 0
+        self._ownership_at = 0
+        self._ownership_track = None
+        self._ownership_state = (False, 0, True)
         self._retry_at = 0
         self._last_error = None
         self._last_layout = None
@@ -840,6 +844,16 @@ class MikroCompanion(ControlSurface):
                 self._rewire()
             self._follow_recording_clip()
             song = self.song()
+            if now >= self._ownership_at or song.view.selected_track != self._ownership_track:
+                self._ownership_at = now + 0.5
+                self._ownership_track = song.view.selected_track
+                ownership = inspect_song(song)
+                if ownership != self._ownership_state:
+                    self.log_message('Mikro Companion NI ownership: selected={}, instances={}, uncertain={}'.format(*ownership))
+                self._ownership_state = ownership
+            native, instances, uncertain = self._ownership_state
+            ownership_packet = 'MO1 {} {} {} {} ready'.format(self._feedback_epoch, int(native), instances, int(uncertain))
+            self._socket.sendto(ownership_packet.encode('ascii'), ('127.0.0.1', 39473))
             sampled = time.perf_counter()
             packet = "MR2 {} {:.6f} {:.6f} {} {:.9f} ready".format(self._feedback_epoch,
                 float(getattr(song, "tempo", 120.0)), float(getattr(song, "current_song_time", 0.0)), int(song.is_playing), sampled)

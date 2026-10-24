@@ -13,6 +13,11 @@ using System.Drawing;
 using System.Drawing.Text;
 
 sealed class AbletonIntegration : IDisposable {
+ readonly INiOwnership ni;
+ NiOwnerState niOwner;long niOwnerAt=-10000;
+ bool LeaseAllowed {get{return ni==null || ni.Granted;}}
+ bool InputAllowed {get{return active && LeaseAllowed;}}
+ bool PanelIdle {get{lock(panelGate)return panelTask==null || panelTask.IsCompleted;}}
  NavigationState navigationState;
  bool NavigationMode {get{return navigationState!=null && navigationState.Epoch==feedbackEpoch && navigationState.Enabled;}}
  DeviceState deviceState;long deviceTitleUntil;
@@ -58,21 +63,22 @@ sealed class AbletonIntegration : IDisposable {
  readonly Action<string,byte[]> panelWrite;readonly Action<int> browserKeyWrite;readonly BrowserKeyOutput browserKeys;
  readonly bool startupSplash;bool startupShown;long startupUntil;
  readonly UdpClient socket;readonly Stopwatch clock=Stopwatch.StartNew();
- long stateAt=-10000,nextOpen,velocityDarkUntil,selectionUntil;int mask,padColor=11;int pendingSelected=-1;bool muted,solo,mixAvailable;bool playing,recording,metronome,follow,host,active,modeChanged;string path,lastFrame="";string error="";
+ long stateAt=-10000,nextOpen,velocityDarkUntil,selectionUntil;int mask,padColor=11;int pendingSelected=-1;bool muted,solo,mixAvailable;bool playing,recording,metronome,follow,host,modeChanged;volatile bool active;string path,lastFrame="";string error="";
  readonly long[] padFlashUntil=new long[16];
  readonly long[] flashUntil=new long[128];
  readonly long[] playbackFlashUntil=new long[128];long feedbackEpoch=-1;bool feedbackSeen;
  readonly object panelGate=new object();byte[] pending;string pendingPath;string pendingLabel;Task panelTask;bool owned;long panelGeneration;readonly PanelOutput panelOutput=new PanelOutput();
- public string Status {get{return error.Length>0?"Ableton unavailable: "+error:modeChanged?"Paused after MIDI mode: return to native, then Resume":!midi.Ready?"Waiting for MIDI port":!active?"Waiting for Ableton control surface":"Ableton: notes + transport";}}
+ public string Status {get{return error.Length>0?"Ableton unavailable: "+error:modeChanged?"Paused after MIDI mode: return to native, then Resume":!midi.Ready?"Waiting for MIDI port":ni!=null && !InputAllowed?(niOwner==null || clock.ElapsedMilliseconds-niOwnerAt>=1000?"Waiting for controller ownership state":niOwner.Count>1?"Paused: multiple Maschine instances":niOwner.Uncertain?"Paused: unknown device identity":ni.Status):!active?"Waiting for Ableton control surface":"Ableton: notes + transport";}}
  public int FixedVelocity {get{return input.FixedValue;}set{if(value<1 || value>127)throw new ArgumentOutOfRangeException("FixedVelocity");input.FixedValue=value;}}
- public bool IsWriting {get{lock(panelGate)return panelTask!=null && !panelTask.IsCompleted;}}
- public bool OwnsController {get{return active && !modeChanged;}}
+ public bool IsWriting {get{return !PanelIdle || ni!=null && ni.Busy;}}
+ public bool OwnsController {get{return InputAllowed && !modeChanged;}}
  public bool PausedForMidiMode {get{return modeChanged;}}
- public AbletonIntegration(Action<string> logger,Action<string,byte[]> writer=null,int statePort=39473,string activityInputs="",int fixedVelocity=127,Action<int> browserKeyWriter=null,bool showStartupSplash=true){
+ public AbletonIntegration(Action<string> logger,Action<string,byte[]> writer=null,int statePort=39473,string activityInputs="",int fixedVelocity=127,Action<int> browserKeyWriter=null,bool showStartupSplash=true,bool nativeHandoff=false,INiOwnership ownership=null){
+  if(nativeHandoff)ni=ownership ?? new NiControllerSession(logger,()=>PanelIdle);
   flashTimer.Interval=15;flashTimer.Start();flashTimer.Stop();flashTimer.Tick+=(sender,args)=>{RenderPanel();if(!FlashesActive(clock.ElapsedMilliseconds))flashTimer.Stop();};
   FixedVelocity=fixedVelocity;startupSplash=showStartupSplash;
-  log=logger;panelWrite=writer ?? StandbyLight.Frame;browserKeys=new BrowserKeyOutput(()=>active && host && BrowserMode && !modeChanged,logger);browserKeys.Enabled=browserKeyWriter==null;browserKeyWrite=browserKeyWriter ?? browserKeys.Post;
-  repeat=new NoteRepeat((n,v,d)=>midi.Note(n,v,d),logger);
+  log=logger;panelWrite=writer ?? StandbyLight.Frame;browserKeys=new BrowserKeyOutput(()=>InputAllowed && host && BrowserMode && !modeChanged,logger);browserKeys.Enabled=browserKeyWriter==null;browserKeyWrite=browserKeyWriter ?? browserKeys.Post;
+  repeat=new NoteRepeat((n,v,d)=>{if(!d || InputAllowed)midi.Note(n,v,d);},logger);
   repeat.Generated+=note=>generatedFlashes.Enqueue(note);
   externalInputs=new MidiActivityInputs(activityInputs,logger);
   socket=new UdpClient(new IPEndPoint(IPAddress.Loopback,statePort));socket.Client.Blocking=false;
@@ -190,6 +196,7 @@ sealed class AbletonIntegration : IDisposable {
   if(controllerPath==null || path!=null && path!=controllerPath)startupShown=false;
   int packets=0;while(socket.Available>0 && packets++<32){IPEndPoint sender=null;byte[] data=socket.Receive(ref sender);if(data.Length>512)continue;
    int newMask,p,r,metro=0,following=0,selected=-1,mute=0,soloed=0,mix=0,color=11,baseNote=36;long epoch=0;string[] fields=Encoding.ASCII.GetString(data).Split(' ');
+   if(fields[0]=="MO1"){NiOwnerState parsed;if(NiOwnerState.TryParse(fields,out parsed)){niOwner=parsed;niOwnerAt=clock.ElapsedMilliseconds;}continue;}
    if(fields.Length==6 && fields[0]=="MG1" && fields[5]=="ready"){
     long source;int available,enabled;
     if(long.TryParse(fields[1],out source) && source>=0 && int.TryParse(fields[2],out available) && (available==0||available==1) && int.TryParse(fields[3],out enabled) && (enabled==0||enabled==1) && enabled<=available && Array.IndexOf(new[]{"1/4","1/4T","1/8","1/8T","1/16","1/16T","1/32","1/32T","Custom"},fields[4])>=0){gridEpoch=source;gridAvailable=available!=0;gridText=fields[4];}continue;
@@ -213,7 +220,7 @@ sealed class AbletonIntegration : IDisposable {
    }
    if(fields.Length==3 && fields[0]=="MBK1"){
     long source;int key;
-    if(active && host && !blocked && BrowserMode && long.TryParse(fields[1],out source) && source==feedbackEpoch && int.TryParse(fields[2],out key) && LiveBrowserKeys.Allowed(key))browserKeyWrite(key);
+    if(InputAllowed && host && !blocked && BrowserMode && long.TryParse(fields[1],out source) && source==feedbackEpoch && int.TryParse(fields[2],out key) && LiveBrowserKeys.Allowed(key))browserKeyWrite(key);
     continue;
    }
    if(fields[0]=="MS1"){StepState parsed;if(StepState.TryParse(fields,out parsed))steps=parsed;continue;}
@@ -294,8 +301,9 @@ sealed class AbletonIntegration : IDisposable {
   if(!midi.Ready && error.Length==0 && clock.ElapsedMilliseconds>=nextOpen){nextOpen=clock.ElapsedMilliseconds+500;try{midi.TryOpen();}catch(Exception ex){error=ex.Message;log(error);}}
   input.PreviewNotes=MelodicPreview?keyboard.Notes:null;
   bool next=host && !blocked && !modeChanged && controllerPath!=null && midi.Ready && clock.ElapsedMilliseconds-stateAt<2000;
-  if(!next){if(active)Pause(!blocked);return;}
-  if(!active || path!=controllerPath){Pause(false);path=controllerPath;active=true;lastFrame="";if(startupSplash && !startupShown){startupShown=true;startupUntil=clock.ElapsedMilliseconds+2000;}log("Ableton HID active");}
+  if(ni!=null){bool request=next && niOwner!=null && niOwner.Epoch==feedbackEpoch && clock.ElapsedMilliseconds-niOwnerAt<1000 && niOwner.CompanionRequested;if(!request && active)Deactivate(false);ni.Request(request,feedbackEpoch);next=request && ni.Granted;}
+  if(!next){if(active)Deactivate(ni==null && !blocked);return;}
+  if(!active || path!=controllerPath){Deactivate(false);path=controllerPath;active=true;lastFrame="";if(startupSplash && !startupShown){startupShown=true;startupUntil=clock.ElapsedMilliseconds+2000;}log("Ableton HID active");}
   externalInputs.Tick(clock.ElapsedMilliseconds);
   if(!RepeatAvailable && RepeatMode){input.CancelHeldNotes();ResetRepeat();}
   if(!ExpressionAvailable && (stripPosition!=0 || modPosition!=0)){midi.ResetExpression();stripPosition=modPosition=0;}
@@ -315,7 +323,7 @@ sealed class AbletonIntegration : IDisposable {
  }
  void ClearPlayback(){Array.Clear(playbackFlashUntil,0,playbackFlashUntil.Length);}
  void RenderPanel(){
-  if(!active)return;
+  if(!InputAllowed)return;
   string label=ScreenLabel(input.BaseNote);if(label!=lastScreenLabel){lastScreenLabel=label;lastFrame="";}
   long now=clock.ElapsedMilliseconds;
   int generated;while(generatedFlashes.TryDequeue(out generated))playbackFlashUntil[generated]=now+50;
@@ -387,7 +395,7 @@ sealed class AbletonIntegration : IDisposable {
  }
  public bool Feed(string controllerPath,byte[] report){
   if(!host)return false;
-  if(active && path==controllerPath){
+  if(InputAllowed && path==controllerPath){
    if(report.Length>=5 && report[0]==1 && (report[1]&1)!=0 && (report[4]&2)!=0){modeChanged=true;Pause(true);log("Ableton paused after MIDI-mode shortcut");}
    else try{input.Feed(report);RenderPanel();}catch(Exception ex){error=ex.Message;Pause(true);log("Ableton input stopped: "+error);}
   }
@@ -446,15 +454,19 @@ sealed class AbletonIntegration : IDisposable {
     if(outputGeneration!=generation){panelOutput.Reset();outputGeneration=generation;}
     // One fresh ownership snapshot per batch; pause can cancel between reports.
     if(NativeBlocked()){panelOutput.Reset();continue;}
-    bool complete=panelOutput.Send(target,frame,label,panelWrite,()=>{lock(panelGate)return generation==panelGeneration;});
+    bool complete=panelOutput.Send(target,frame,label,panelWrite,()=>{lock(panelGate)return generation==panelGeneration && LeaseAllowed;});
     if(complete)lock(panelGate){if(generation==panelGeneration)owned=frame[23]!=0;}
    }catch(Exception ex){panelOutput.Reset();log("Ableton LED output: "+ex.Message);}
   }
  }
  public void Pause(bool clear){
+  if(ni!=null)ni.Reset();Deactivate(clear && ni==null);
+ }
+ void Deactivate(bool clear){
   startupUntil=0;flashTimer.Stop();Array.Clear(editFlash,0,16);
+  bool wasActive=active;active=false;
   ResetRepeat();
-  bool wasActive=active;active=false;stripPosition=modPosition=0;browserKeys.NewSession();
+  stripPosition=modPosition=0;browserKeys.NewSession();
   bool hadShift=input.Shift;input.Reset();try{if(hadShift && midi.Ready)midi.Modifier(false);midi.ReleaseAll();}catch(Exception ex){log("Ableton note release: "+ex.Message);}
   Array.Clear(padFlashUntil,0,padFlashUntil.Length);
   Array.Clear(flashUntil,0,flashUntil.Length);
@@ -463,11 +475,22 @@ sealed class AbletonIntegration : IDisposable {
   lock(panelGate){panelGeneration++;pending=null;if(clear && (owned || wasActive) && path!=null){var blank=new byte[81];blank[0]=0x80;QueuePanel(path,blank);}owned=false;}
   lastFrame="";
  }
- public void ResetState(){stateAt=-10000;int drained=0;while(socket.Available>0 && drained++<256){IPEndPoint sender=null;socket.Receive(ref sender);}}
+ public void ResetState(){stateAt=niOwnerAt=-10000;int drained=0;while(socket.Available>0 && drained++<256){IPEndPoint sender=null;socket.Receive(ref sender);}}
  public void Resume(){modeChanged=false;ResetState();}
  public void Dispose(){
   Pause(true);Task task;lock(panelGate){task=panelTask;}if(task!=null)task.Wait(1500);
+  if(ni!=null)ni.Dispose();
   repeat.Dispose();browserKeys.Dispose();flashTimer.Dispose();socket.Close();midi.Dispose();
+ }
+}
+
+sealed class NiOwnerState {
+ public long Epoch;public bool Selected,Uncertain;public int Count;
+ public bool CompanionRequested {get{return !Uncertain && Count<=1 && !Selected;}}
+ public static bool TryParse(string[] fields,out NiOwnerState state){
+  state=null;long epoch;int selected,count,uncertain;
+  if(fields.Length!=6 || fields[0]!="MO1" || fields[5]!="ready" || !long.TryParse(fields[1],out epoch) || epoch<0 || !int.TryParse(fields[2],out selected) || selected<0 || selected>1 || !int.TryParse(fields[3],out count) || count<0 || count>512 || selected>count || !int.TryParse(fields[4],out uncertain) || uncertain<0 || uncertain>1)return false;
+  state=new NiOwnerState{Epoch=epoch,Selected=selected!=0,Count=count,Uncertain=uncertain!=0};return true;
  }
 }
 

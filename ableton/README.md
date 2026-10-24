@@ -12,6 +12,19 @@ Start the companion before Live. Use **MikroCompanion** as the control surface, 
 
 Choose **Pause** in the tray before loading Maschine as a plug-in or giving the controller to another application. Close/remove Maschine, return to native mode and choose **Resume**. Use the indefinite pause for this; **Pause for 1 hour** resumes automatically.
 
+### Experimental automatic handoff
+
+Set `EnableNativeHandoff=true` in `companion.ini`, then restart the companion.
+With one Maschine VST in the Set, selecting its track gives it the Mikro;
+selecting another track requests control for the companion. NI's
+Host Integration Agent must be installed and running.
+Maschine may redraw its screen on the first pad press after returning.
+
+This option supports one Mikro and one Maschine instance. Multiple instances,
+unknown device identity or missing script state pause the integration. If the
+NI connection fails, use **Resume** to retry. Leave the option disabled to use
+manual Pause/Resume.
+
 ## Display and lighting
 
 The OLED shows the current parameter and value. An inverse value is the encoder target; lit arrows indicate another parameter page. Hold **Group** to see the selected track's number and name.

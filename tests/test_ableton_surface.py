@@ -671,8 +671,11 @@ class SurfaceTests(unittest.TestCase):
             surface.update_display()
         self.assertIsNone(surface._last_error)
         self.assertTrue(any("state recovered" in m for m in surface.messages))
-        self.assertEqual(connection.sendto.call_count, 6)
-        self.assertTrue(connection.sendto.call_args_list[0].args[0].startswith(b"MR2 "))
+        packets = [call.args[0] for call in connection.sendto.call_args_list]
+        self.assertEqual(sum(packet.startswith(b'MO1 ') for packet in packets), 1)
+        legacy = [packet for packet in packets if not packet.startswith(b'MO1 ')]
+        self.assertEqual(len(legacy), 6)
+        self.assertTrue(legacy[0].startswith(b'MR2 '))
 
     def test_track_color_change_without_instrument_inspection(self):
         song = self.song_with_track(0xFF0000)

@@ -76,6 +76,7 @@ sealed class StandbyVegas {
 }
 class Settings {
  public bool EnableAbleton=false;
+ public bool EnableNativeHandoff=false;
  public string MidiActivityInputs="";public int FixedVelocity=127;public bool DisplayDim;
  public string Executable,Arguments="";public int HoldMs=1200;public bool StandbyLed=true,EnableClose=true,PauseWhenDawRunning=true;public int CloseHoldMs=2000;public string StandbyBrightness="Dim";public const string DefaultDaws="Ableton Live*;FL;FL64;FL (scaled);FL64 (scaled);FL (compatible memory);reaper;Cubase*;Nuendo*;Studio One;Bitwig Studio;ProTools;Cakewalk;Sonar";public string[] DawProcesses=ParseDaws(DefaultDaws);
  public byte StandbyBrightnessValue {get{return BrightnessValue(StandbyBrightness);}}
@@ -102,6 +103,7 @@ class Settings {
   foreach(var pair in values) {
    switch(pair.Key.ToLowerInvariant()) {
     case "enableableton":s.EnableAbleton=bool.Parse(pair.Value);break;
+    case "enablenativehandoff":s.EnableNativeHandoff=bool.Parse(pair.Value);break;
     case "displaydim":s.DisplayDim=bool.Parse(pair.Value);break;
     case "fixedvelocity":s.FixedVelocity=int.Parse(pair.Value);if(s.FixedVelocity<1 || s.FixedVelocity>127)throw new Exception("FixedVelocity must be 1..127");break;
     case "midiactivityinputs":s.MidiActivityInputs=pair.Value;break;
@@ -283,7 +285,7 @@ class Companion : Form {
   ShowInTaskbar=false;WindowState=FormWindowState.Minimized;
   var menu=new ContextMenuStrip();statusItem=new ToolStripMenuItem("Starting companion..."){Enabled=false};menu.Items.Add(statusItem);manualPauseItem=new ToolStripMenuItem("Pause",null,(s,e)=>PauseIndefinitely());menu.Items.Add(manualPauseItem);pauseItem=new ToolStripMenuItem("Pause for 1 hour",null,(s,e)=>PauseOneHour());menu.Items.Add(pauseItem);resumeItem=new ToolStripMenuItem("Resume",null,(s,e)=>ResumeNow()){Enabled=false};menu.Items.Add(resumeItem);vegasItem=new ToolStripMenuItem("Vegas mode",null,(s,e)=>ToggleVegas());menu.Items.Add(vegasItem);dimItem=new ToolStripMenuItem("Dim",null,(s,e)=>ToggleDim()){Checked=settings.DisplayDim};menu.Items.Add(dimItem);menu.Items.Add("Show status",null,(s,e)=>ShowStatus());menu.Items.Add("Reload config",null,(s,e)=>Reload());startupExecutable=System.Reflection.Assembly.GetExecutingAssembly().Location;startupItem=new ToolStripMenuItem("Start with Windows",null,(s,e)=>ToggleStartup());startupItem.Checked=StartupRegistration.Enabled(startupExecutable);menu.Items.Add(startupItem);menu.Items.Add("Open log folder",null,(s,e)=>Process.Start(Path.Combine(root,"logs")));menu.Items.Add("Exit",null,(s,e)=>Close());
   tray=new NotifyIcon{Icon=System.Drawing.SystemIcons.Application,Text="Maschine Companion",ContextMenuStrip=menu,Visible=true};
-  timer.Interval=50;timer.Tick+=(s,e)=>SafeTick();timer.Start();Log("started hold="+settings.HoldMs+" executable="+settings.Executable);sessionLocked=!SessionState.InputAvailable();if(settings.EnableAbleton)ableton=new AbletonIntegration(Log,activityInputs:settings.MidiActivityInputs,fixedVelocity:settings.FixedVelocity);Scan();sessionNotifications=SessionState.WTSRegisterSessionNotification(Handle,0);if(!sessionNotifications)Log("session notification registration unavailable");SafeTick();
+  timer.Interval=50;timer.Tick+=(s,e)=>SafeTick();timer.Start();Log("started hold="+settings.HoldMs+" executable="+settings.Executable);sessionLocked=!SessionState.InputAvailable();if(settings.EnableAbleton)ableton=new AbletonIntegration(Log,activityInputs:settings.MidiActivityInputs,fixedVelocity:settings.FixedVelocity,nativeHandoff:settings.EnableNativeHandoff);Scan();sessionNotifications=SessionState.WTSRegisterSessionNotification(Handle,0);if(!sessionNotifications)Log("session notification registration unavailable");SafeTick();
  }
  void PauseIndefinitely(){PauseOneHour();pause.StartIndefinite();Log("paused until resumed");UpdateStatus(clock.ElapsedMilliseconds);}
  void PauseOneHour(){
@@ -366,7 +368,7 @@ class Companion : Form {
   foreach(var c in controllers.Values)c.Vegas.Ready(vegasItem.Checked && settings.StandbyLed && !pause.Active(DateTimeOffset.UtcNow) && !abletonHost && !runningNow && !ledBlockedNow && now>=launchUntil && !c.Hold.IsDown && !c.Vegas.InputHeld && !c.MarkerSet,now);
   UpdateContrast(now,!pause.Active(DateTimeOffset.UtcNow) && !nativeBlockedNow && !runningNow && now>=launchUntil && (abletonHost?ableton!=null && ableton.OwnsController:!ledBlockedNow));
   if(ableton!=null){
-   string controllerPath=null;foreach(var c in controllers.Values){controllerPath=c.Path;break;}
+   string controllerPath=null;if(!settings.EnableNativeHandoff || controllers.Count==1)foreach(var c in controllers.Values){controllerPath=c.Path;break;}
    if(abletonHost)foreach(var c in controllers.Values)if(c.LedSet){
     if(!nativeBlockedNow && Processes.DawHandoffAllowed(settings.DawProcesses) && !StandbyLight.IsBusy)try{StandbyLight.Set(c.Path,0);}catch(Exception ex){Log("Ableton standby handoff: "+ex.Message);}
     c.LedSet=false;
@@ -528,7 +530,9 @@ c.Hold.Input(pressed,clock.ElapsedMilliseconds);if(!pressed){c.Action=0;ClearLau
   tray.Visible=false;tray.ContextMenuStrip.Dispose();tray.Dispose();Log("stopped");try{log.Dispose();}catch(IOException){}exitSignal.Dispose();base.OnFormClosed(e);
  }
  [STAThread] static int Main(string[] args) {
+  if(args.Length==2 && args[0]=="--ni-client"){int niPid;if(!int.TryParse(args[1],out niPid) || niPid<=0)return 2;return NiClientHost.Run(niPid);}
   if(args.Length==1 && args[0]=="--exit"){try{using(var signal=EventWaitHandle.OpenExisting("Local\\MaschineCompanionExit"))signal.Set();return 0;}catch(WaitHandleCannotBeOpenedException){return 1;}}
+  if(args.Length==1 && args[0]=="--ni-self-test"){NiClientHost.TestTransport();return 0;}
   if(args.Length>0 && args[0]=="--self-test"){Tests.Run();return 0;}
   bool created;using(var mutex=new Mutex(true,"Local\\MaschineCompanionLauncher",out created)) {
    if(!created)return 0;

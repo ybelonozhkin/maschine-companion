@@ -25,7 +25,7 @@ New-Item -ItemType Directory -Path (Join-Path $output 'ableton\MikroCompanion'),
 foreach ($file in @('README.md','CONFIGURATION.md')) {
     Copy-Item -LiteralPath (Join-Path $projectRoot "launcher\$file") -Destination (Join-Path $output 'launcher')
 }
-$scriptFiles = @('__init__.py','model.py','activity.py','clip_activity.py','keyboard.py','editing.py','selection.py','mixer.py','navigation.py','devices.py','browser.py','sequencer.py','pattern.py','surface.py')
+$scriptFiles = @('__init__.py','model.py','activity.py','clip_activity.py','keyboard.py','editing.py','selection.py','mixer.py','navigation.py','devices.py','browser.py','sequencer.py','pattern.py','ownership.py','surface.py')
 foreach ($file in $scriptFiles) {
     Copy-Item -LiteralPath (Join-Path $projectRoot "ableton\MikroCompanion\$file") -Destination (Join-Path $output 'ableton\MikroCompanion')
 }

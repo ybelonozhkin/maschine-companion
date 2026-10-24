@@ -7,6 +7,33 @@ using System.Net;
 using System.Net.Sockets;
 
 class NativeMidiTests {
+ sealed class FakeNi : INiOwnership {
+  public bool Granted {get;set;}public bool Busy {get{return false;}}public string Status {get{return "test NI";}}public bool Wanted;
+  public void Request(bool value,long revision){Wanted=value;if(!value)Granted=false;}
+  public void Reset(){Wanted=Granted=false;}public void Dispose(){Reset();}
+ }
+ static void OwnershipTests(){
+  var owner=new FakeNi();int reports=0;bool loseDuringWrite=false;
+  using(var integration=new AbletonIntegration(Console.WriteLine,(path,frame)=>{Interlocked.Increment(ref reports);if(loseDuringWrite)owner.Granted=false;},39475,browserKeyWriter:key=>{},showStartupSplash:false,nativeHandoff:true,ownership:owner))using(var sender=new UdpClient()){
+   Action<string> send=text=>{byte[] data=Encoding.ASCII.GetBytes(text);sender.Send(data,data.Length,new IPEndPoint(IPAddress.Loopback,39475));};
+   Action<string> tick=state=>{send(state);send("MC4 65535 0 0 7 36 2 ready");integration.Tick("test-device",true,false);};
+   Check(SpinWait.SpinUntil(()=>{tick("MO1 2 0 1 0 ready");return owner.Wanted;},8000),"handoff requests NI after live state arrives");
+   Check(!integration.OwnsController && reports==0,"request is not an ownership grant");
+   owner.Granted=true;tick("MO1 2 0 1 0 ready");Check(integration.OwnsController,"NI grant permits companion");
+   Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"handoff output drains");
+   owner.Granted=false;Check(!integration.OwnsController,"NI loss closes input gate before next tick");
+   int previous=reports;tick("MO1 2 0 1 0 ready");Thread.Sleep(30);Check(reports==previous,"NI loss causes no panel clear");
+   owner.Granted=true;tick("MO1 2 0 1 0 ready");Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"handoff reacquire redraw drains");
+   previous=reports;tick("MO1 2 1 1 0 ready");Thread.Sleep(30);Check(!owner.Wanted && !integration.OwnsController && previous==reports,"Maschine track releases without clearing native panel");
+   tick("MO1 2 0 2 0 ready");Check(!owner.Wanted,"multiple native instances block acquisition");
+   tick("MO1 2 0 1 1 ready");Check(!owner.Wanted,"uncertain device identity blocks acquisition");
+   tick("MO1 1 0 1 0 ready");Check(!owner.Wanted,"wrong track epoch blocks acquisition");
+   tick("MO1 2 0 1 0 ready");owner.Granted=true;loseDuringWrite=true;previous=reports;tick("MO1 2 0 1 0 ready");
+   Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"loss during report completes batch cancellation");Check(reports-previous<=1,"ownership checked between individual panel reports");
+   loseDuringWrite=false;integration.Pause(true);Check(!owner.Wanted,"manual pause releases NI lease");
+  }
+  Console.WriteLine("PASS handoff acquisition gate, immediate loss gate, native-track release, ambiguous state guards and panel cancellation");
+ }
  [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]struct Caps{public ushort a,b;public uint c;[MarshalAs(UnmanagedType.ByValTStr,SizeConst=32)]public string name;public uint support;}
  delegate void Callback(IntPtr h,uint message,UIntPtr instance,UIntPtr data,UIntPtr time);
  [DllImport("winmm.dll")]static extern uint midiInGetNumDevs();
@@ -636,6 +663,7 @@ class NativeMidiTests {
    integration.Tick("test-device",false,false);Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"Live exit clears screen");
    Check(SpinWait.SpinUntil(()=>{tick();return screen(BankScreen.StartupSplash);},1000),"new Live session shows startup screen again");
   }
+  OwnershipTests();
   Console.WriteLine("PASS Windows MIDI loopback, native HID mapping, pause releases and suppresses notes, async panel output, endpoint cleanup");return 0;
  }
 }
