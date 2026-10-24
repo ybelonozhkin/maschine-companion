@@ -232,6 +232,34 @@ class NativeMidiTests {
     Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(65<<8)|(1<<16)));},1000),"encoder returns to pad banks despite stale enabled Grid feedback");
     gridDial[3]=0;integration.Feed("test-device",gridDial);
     feedback("MG1 20 1 0 1/32T ready");
+    feedback("MDEV1 20 1 1 0 1 1 0 RmlsdGVy Q3V0b2Zm Mi40MCBrSHo= ready");
+    Check(SpinWait.SpinUntil(()=>{lock(frames){var f=frames[frames.Count-1];return f[7]==127 && f[9]==0 && f[10]==124;}},1000),"Plug-in overlay lights parameter navigation boundaries");
+    lock(received)received.Clear();control(9,false);control(8,true);control(6,false);
+    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(81<<8)|(1<<16))) && received.Contains((uint)(0xb0|(82<<8)|(127<<16))) && received.Contains((uint)(0xb0|(80<<8)|(127<<16)));},1000),"Plugin button and plain/Shift arrows send distinct device commands");
+    var deviceDial=new byte[64];deviceDial[0]=1;deviceDial[7]=2;integration.Feed("test-device",deviceDial);
+    lock(received)received.Clear();deviceDial[7]=3;integration.Feed("test-device",deviceDial);deviceDial[4]=2;deviceDial[7]=4;integration.Feed("test-device",deviceDial);
+    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(83<<8)|(1<<16))) && received.Contains((uint)(0xb0|(84<<8)|(1<<16)));},1000),"device encoder distinguishes normal and fine adjustment");
+    lock(received)foreach(uint message in received)Check((message&0xffff)!=(uint)(0xb0|(65<<8)) && (message&0xffff)!=(uint)(0xb0|(33<<8)),"device encoder does not also change note banks or root");
+    deviceDial[4]=0;integration.Feed("test-device",deviceDial);
+    Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"device parameter OLED completes");
+    lock(frames)Check(Convert.ToBase64String(LatestBottom(screens))==Convert.ToBase64String(BankScreen.TextReport("Cutoff\n"+BankScreen.Mark("2.40 kHz"),true)),"device OLED uses the native formatted value");
+    deviceDial[7]=0;integration.Feed("test-device",deviceDial);
+    feedback("MDEV1 20 1 0 0 1 1 0 RmlsdGVy Q3V0b2Zm Mi40MCBrSHo= ready");
+    lock(received)received.Clear();control(31,true);control(34,true);
+    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(90<<8)|(127<<16))) && received.Contains((uint)(0xb0|(86<<8)|(127<<16)));},1000),"Shift Scene toggles document view and Shift Variation toggles Navigate");
+    lock(received)Check(!received.Contains((uint)(0xb0|(74<<8)|(127<<16))),"Shift Scene does not also enter Scene mode");
+    feedback("MNAV1 20 1 0 MTcuMS4x ready");
+    Check(SpinWait.SpinUntil(()=>{lock(frames){var f=frames[frames.Count-1];return f[35]==127 && f[9]==0 && f[10]==124;}},1000),"Navigate lights active button and first page boundary");
+    lock(received)received.Clear();control(9,false);
+    var navigationDial=new byte[64];navigationDial[0]=1;navigationDial[7]=1;integration.Feed("test-device",navigationDial);navigationDial[4]=2;navigationDial[7]=2;integration.Feed("test-device",navigationDial);
+    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(87<<8)|(1<<16))) && received.Contains((uint)(0xb0|(88<<8)|(1<<16))) && received.Contains((uint)(0xb0|(89<<8)|(1<<16)));},1000),"Navigate arrows choose pages and encoder sends normal or fast movement");
+    lock(received)foreach(uint message in received)Check((message&0xffff)!=(uint)(0xb0|(65<<8)) && (message&0xffff)!=(uint)(0xb0|(33<<8)),"Navigate encoder does not change pad bank or root");
+    navigationDial[4]=0;navigationDial[7]=0;integration.Feed("test-device",navigationDial);
+    feedback("MNAV1 20 1 1 VmVyc2U= ready");
+    Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"Navigate OLED completes");
+    lock(frames)Check(Convert.ToBase64String(LatestBottom(screens))==Convert.ToBase64String(BankScreen.TextReport("MARKER\n"+BankScreen.Mark("Verse"),true)),"Navigate shows locator name as encoder target");
+    feedback("MNAV1 20 0 1 - ready");
+    fullState(36,1,1,1);
     string clockSample=(System.Diagnostics.Stopwatch.GetTimestamp()/(double)System.Diagnostics.Stopwatch.Frequency).ToString("R",System.Globalization.CultureInfo.InvariantCulture);
     var repeatClock=Encoding.ASCII.GetBytes("MR2 20 120 0 0 "+clockSample+" ready");sender.Send(repeatClock,repeatClock.Length,new IPEndPoint(IPAddress.Loopback,39474));integration.Tick("test-device",true,false);
     lock(received)received.Clear();control(17,false);
@@ -247,6 +275,21 @@ class NativeMidiTests {
     repeatPad[2]=0x30;repeatPad[3]=0;integration.Feed("test-device",repeatPad);repeatHold[3]=0;integration.Feed("test-device",repeatHold);
     int notesAfterRelease;lock(received){notesAfterRelease=0;foreach(uint value in received)if((value&0xf0)==0x90)notesAfterRelease++;}
     Thread.Sleep(160);lock(received){int after=0;foreach(uint value in received)if((value&0xf0)==0x90)after++;Check(after==notesAfterRelease,"pad and button release stop all repeats");}
+    clockSample=(System.Diagnostics.Stopwatch.GetTimestamp()/(double)System.Diagnostics.Stopwatch.Frequency).ToString("R",System.Globalization.CultureInfo.InvariantCulture);
+    feedback("MR2 20 120 0 0 "+clockSample+" ready");
+    control(17,true);integration.Tick("test-device",true,false);
+    Check(SpinWait.SpinUntil(()=>{lock(frames)return frames[frames.Count-1][18]==127;},1000),"Pad Note Repeat stays bright after Shift shortcut release");
+    lock(received)received.Clear();repeatPad[2]=0x1c;repeatPad[3]=0x80;integration.Feed("test-device",repeatPad);
+    Check(SpinWait.SpinUntil(()=>{lock(received){int ons=0;foreach(uint value in received)if((value&0xf0)==0x90)ons++;return ons>=2;}},400),"pinned Pad Note Repeat generates notes without holding its button");
+    pressurePad[2]=0x45;pressurePad[3]=0;integration.Feed("test-device",pressurePad);
+    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0x90|(36<<8)|(40<<16)));},400),"pinned repeat still follows pad pressure");
+    repeatPad[2]=0x30;repeatPad[3]=0;integration.Feed("test-device",repeatPad);
+    lock(received){notesAfterRelease=0;foreach(uint value in received)if((value&0xf0)==0x90)notesAfterRelease++;}
+    Thread.Sleep(160);lock(received){int after=0;foreach(uint value in received)if((value&0xf0)==0x90)after++;Check(after==notesAfterRelease,"pinning the mode does not latch released pad notes");}
+    control(17,false);integration.Tick("test-device",true,false);
+    Check(SpinWait.SpinUntil(()=>{lock(frames)return frames[frames.Count-1][18]==124;},1000),"ordinary Note Repeat press clears pinning without re-enabling on release");
+    control(17,true);control(17,true);integration.Tick("test-device",true,false);
+    Check(SpinWait.SpinUntil(()=>{lock(frames)return frames[frames.Count-1][18]==124;},1000),"Shift shortcut can also unpin Pad Note Repeat");
     lock(received)received.Clear();control(10,false);var strip=new byte[64];strip[0]=1;strip[10]=200;integration.Feed("test-device",strip);strip[10]=0;integration.Feed("test-device",strip);
     Check(SpinWait.SpinUntil(()=>Count()==2,1000),"Pitch button routes strip and release");
     lock(received)Check(received[0]==(uint)(0xe0|(127<<8)|(127<<16))&&received[1]==(uint)(0xe0|(64<<16)),"Pitch returns to center on release");

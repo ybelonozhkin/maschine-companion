@@ -41,10 +41,7 @@ class Mixer:
         self.enabled = not self.enabled if self.parameter() is not None else False
 
     def turn(self, delta):
-        parameter = self.parameter()
-        if self.enabled and parameter is not None:
-            step = (float(parameter.max) - float(parameter.min)) / 200.0
-            parameter.value = max(parameter.min, min(parameter.max, parameter.value + delta * step))
+        self.adjust_db(delta, 0.5)
 
     @staticmethod
     def decibels(text):
@@ -56,17 +53,40 @@ class Mixer:
         parameter = self.parameter()
         if not self.enabled or parameter is None:
             return
-        low, high = float(parameter.min), float(parameter.max)
-        for _ in range(32):
-            middle = (low + high) / 2
-            value = self.decibels(parameter.str_for_value(middle))
-            if value is None:
-                return
-            if value < target:
-                low = middle
-            else:
-                high = middle
-        parameter.value = (low + high) / 2
+        default = getattr(parameter, "default_value", None)
+        if target == 0 and default is not None and self.decibels(parameter.str_for_value(default)) == 0:
+            parameter.value = default
+            return
+        if target == 0:
+            low, high = float(parameter.min), float(parameter.max)
+            for _ in range(32):
+                middle = (low + high) / 2
+                value = self.decibels(parameter.str_for_value(middle))
+                if value is None:
+                    return
+                # Preserve the sign of formatted -0.00 to locate unity.
+                if value < 0 or (value == 0 and math.copysign(1, value) < 0):
+                    low = middle
+                else:
+                    high = middle
+            parameter.value = high
+            return
+        # Live formats dB with limited precision. Find both ends of the
+        # matching interval and use its center, rather than its rounded edge.
+        boundaries = []
+        for upper in (False, True):
+            low, high = float(parameter.min), float(parameter.max)
+            for _ in range(32):
+                middle = (low + high) / 2
+                value = self.decibels(parameter.str_for_value(middle))
+                if value is None:
+                    return
+                if value < target or (upper and value == target):
+                    low = middle
+                else:
+                    high = middle
+            boundaries.append((low + high) / 2)
+        parameter.value = sum(boundaries) / 2
 
     def reset(self):
         parameter = self.parameter()
@@ -77,13 +97,18 @@ class Mixer:
             else:
                 self.set_db(0.0)
 
-    def coarse(self, delta):
+    def adjust_db(self, delta, step):
         parameter = self.parameter()
         if self.enabled and parameter is not None and delta:
             current = self.decibels(str(parameter))
             if current is not None:
-                target = (round(current) + delta) if math.isfinite(current) else -70.0
+                if not math.isfinite(current) and delta < 0:
+                    return
+                target = round((math.floor(current / step + 0.5) + delta) * step, 1) if math.isfinite(current) else -70.0
                 self.set_db(target)
+
+    def fine(self, delta):
+        self.adjust_db(delta, 0.1)
 
     def toggle_tempo(self):
         self.tempo = not self.tempo

@@ -17,7 +17,7 @@ if (!$UserLibrary) {
 if (!$UserLibrary -or !(Test-Path -LiteralPath $UserLibrary -PathType Container)) { throw 'Pass the existing Ableton User Library directory with -UserLibrary.' }
 $destination = Join-Path $UserLibrary 'Remote Scripts\MikroCompanion'
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
-foreach ($name in '__init__.py','model.py','activity.py','clip_activity.py','keyboard.py','editing.py','selection.py','mixer.py','browser.py','sequencer.py','pattern.py','surface.py') {
+foreach ($name in '__init__.py','model.py','activity.py','clip_activity.py','keyboard.py','editing.py','selection.py','mixer.py','navigation.py','devices.py','browser.py','sequencer.py','pattern.py','surface.py') {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "ableton\MikroCompanion\$name") -Destination (Join-Path $destination $name)
 }
 foreach ($name in 'LICENSE','THIRD-PARTY-NOTICES.md') {

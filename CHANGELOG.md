@@ -2,9 +2,7 @@
 
 All notable changes are documented here, using [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0]
-
-Changes since 0.2.0.
+## [0.3.0] - 2026-10-24
 
 ### Added
 
@@ -16,15 +14,18 @@ Changes since 0.2.0.
 - Scene mode for launching four Session scenes from the right pad column. Pattern and Scene share their navigation position.
 - Events mode for selecting notes by pitch or time range, with Erase and the editing commands printed on the pads: Undo, Redo, Quantize, Quantize 50%, Nudge, Semitone and Octave.
 - Live transport controls, recording that follows Session or Arrangement focus, Restart, Loop, Tap Tempo, Metronome, Follow and held Grid adjustment. Track arming remains manual.
-- Note Repeat with tempo synchronization, straight and triplet rates, swing and pressure-controlled velocity.
+- Note Repeat with tempo synchronization, straight and triplet rates, swing, pressure-controlled velocity and Shift + Note Repeat to pin the mode.
 - Keyboard arpeggiator with five note orders, octave range, gate, swing and Latch. Arp keeps each note's initial strike velocity.
 - **Beta: Arp Rhythm** with 64 eight-step patterns and a pattern diagram on the display.
 - **Beta: track navigation** with Group + arrows. Group + Shift + right creates and selects a MIDI track; holding Group displays the selected track's number and name.
 - Browser navigation, folder and preset browsing, plug-in loading and the red Favorites Collection. Shift + encoder jumps directly by six items.
-- Volume and Tempo encoder controls, Fixed Vel, 16 Vel, and Smart Strip pitch bend and modulation.
+- Volume in 0.5 dB steps, 0.1 dB with Shift, and encoder press to reset to 0 dB. Tempo encoder controls, Fixed Vel, 16 Vel, and Smart Strip pitch bend and modulation.
+- Plug-in parameter control: arrows select parameters, Shift + arrows select devices, and Shift + encoder gives fine adjustment. The display shows Live's formatted values.
+- Arrangement navigation with Position and Markers pages. Position moves by one bar, or four with Shift; Shift + Scene switches Session and Arrangement views while preserving the controller mode.
 - Two-line parameter display with a bold heading and a thin value line. Inverse fields identify the encoder target; long names retain their beginning and end.
 - Indefinite Pause in the tray for handing the controller to another application. Resume also clears the pause caused by switching to MIDI mode after returning to native mode.
 - Tray Vegas mode for a standby animation while its checkbox is enabled. Starting Live or Maschine clears the checkbox.
+- Saved **Dim** checkbox in the tray for minimum OLED contrast.
 - Build and installation scripts, tests and a controls guide for the Live integration.
 - GitHub Actions builds for Windows x64, with downloadable binaries, file checksums and tag-triggered draft releases.
 

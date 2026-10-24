@@ -152,10 +152,41 @@ class SurfaceTests(unittest.TestCase):
         return LiveNode(view=LiveNode(selected_track=track, follow_song=False), is_playing=False,
                         session_record=False, session_record_status=0, record_mode=False, metronome=False, tracks=[track])
 
+    def test_navigate_preserves_pad_and_encoder_modes_and_view_toggle(self):
+        song = self.song_with_track()
+        song.get_current_beats_song_time = Mock(return_value="1.1.1.0")
+        surface, connection = self.make_surface(song)
+        surface._keyboard.enabled = True
+        surface._mixer.enabled = True
+        surface._navigation_action("toggle")
+        self.assertTrue(surface._navigation.enabled)
+        self.assertTrue(surface._keyboard.enabled)
+        self.assertTrue(surface._mixer.enabled)
+        surface._application.view.is_view_visible = Mock(return_value=True)
+        surface._application.view.show_view = Mock()
+        surface._toggle_document_view()
+        surface._application.view.show_view.assert_called_with("Arranger")
+        self.assertTrue(surface._navigation.enabled)
+        self.assertTrue(surface._keyboard.enabled)
+        surface._application.view.is_view_visible.return_value = False
+        surface._toggle_document_view()
+        surface._application.view.show_view.assert_called_with("Session")
+        surface._navigation_action("navigate", 1)
+        surface._navigation_action("toggle")
+        self.assertFalse(surface._navigation.enabled)
+        self.assertTrue(surface._mixer.enabled)
+        self.assertEqual(surface._navigation.page, 1)
+        surface._navigation_action("toggle")
+        surface._pad_mode(127)
+        self.assertFalse(surface._navigation.enabled)
+
     def test_volume_focus_restores_keyboard_and_tracks_change_without_arm(self):
         class Volume(LiveNode):
+            def str_for_value(self, value):
+                return "{:.2f} dB".format(80 * value * value - 45)
+
             def __str__(self):
-                return "-6.0 dB"
+                return self.str_for_value(self.value)
         song = self.song_with_track()
         song.root_note, song.scale_mode, song.scale_name = 0, True, "Major"
         song.scale_intervals = (0, 2, 4, 5, 7, 9, 11)
@@ -168,7 +199,7 @@ class SurfaceTests(unittest.TestCase):
         surface._mixer_action("toggle")
         self.assertTrue(surface._mixer.enabled)
         surface._mixer_action("turn", 1)
-        self.assertAlmostEqual(first.mixer_device.volume.value, 0.505)
+        self.assertEqual(str(first.mixer_device.volume), "-24.50 dB")
         surface._mixer_action("navigate", 1)
         self.assertIs(song.view.selected_track, second)
         self.assertTrue(surface._mixer.enabled)
@@ -603,6 +634,30 @@ class SurfaceTests(unittest.TestCase):
         self.assertEqual(good.callbacks["color"], [])
         surface._remove_listeners()
 
+    def test_device_overlay_restores_volume_without_changing_playing_modes(self):
+        song = self.song_with_track()
+        track = song.view.selected_track
+        device = LiveNode(name="Filter", parameters=[])
+        track.devices = [device]
+        track.view = LiveNode(selected_device=device)
+        song.view.select_device = Mock(side_effect=lambda d: setattr(track.view, "selected_device", d))
+        surface, connection = self.make_surface(song)
+        surface._application.view.show_view = Mock()
+        surface._mixer.enabled = True
+        surface._keyboard.enabled = True
+        surface._device_action("toggle")
+        self.assertTrue(surface._devices.enabled)
+        self.assertTrue(surface._keyboard.enabled)
+        self.assertFalse(surface._mixer.enabled)
+        self.assertTrue(any(call.args[0].startswith(b"MDEV1 ") for call in connection.sendto.call_args_list))
+        surface._device_action("toggle")
+        self.assertFalse(surface._devices.enabled)
+        self.assertTrue(surface._mixer.enabled)
+        surface._device_action("toggle")
+        surface._pad_mode(127)
+        self.assertFalse(surface._devices.enabled)
+        surface.disconnect()
+
     def test_temporary_api_error_retries_without_log_flood(self):
         surface, connection = self.make_surface(self.song_with_track())
         surface._rewire = Mock(side_effect=[TypeError("invalid handle"), TypeError("invalid handle"), None])
@@ -616,7 +671,7 @@ class SurfaceTests(unittest.TestCase):
             surface.update_display()
         self.assertIsNone(surface._last_error)
         self.assertTrue(any("state recovered" in m for m in surface.messages))
-        self.assertEqual(connection.sendto.call_count, 4)
+        self.assertEqual(connection.sendto.call_count, 6)
         self.assertTrue(connection.sendto.call_args_list[0].args[0].startswith(b"MR2 "))
 
     def test_track_color_change_without_instrument_inspection(self):

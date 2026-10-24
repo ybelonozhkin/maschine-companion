@@ -41,7 +41,14 @@ sealed class NativeMidi : IDisposable {
  public void PatternToggle(){Send(0xb0,70,127);Send(0xb0,70,0);}
  public void SceneToggle(){Send(0xb0,74,127);Send(0xb0,74,0);}
  public void PatternTurn(int delta,bool horizontal=false){for(int i=0;i<Math.Abs(delta);i++)Send(0xb0,horizontal?73:72,delta>0?1:127);}
- public void Transport(MikroTransport command){if(command==MikroTransport.GridFeedback || command==MikroTransport.FixedVelocity || command==MikroTransport.SixteenVelocity)return;int cc=command==MikroTransport.Play?20:command==MikroTransport.Stop?21:command==MikroTransport.Record?22:command==MikroTransport.TapTempo?25:command==MikroTransport.Metronome?26:command==MikroTransport.Follow?27:command==MikroTransport.Mute?29:command==MikroTransport.Solo?30:command==MikroTransport.PadMode?31:command==MikroTransport.KeyboardMode?32:command==MikroTransport.Events?39:command==MikroTransport.Restart?45:command==MikroTransport.Loop?46:command==MikroTransport.Erase?47:command==MikroTransport.Volume?48:command==MikroTransport.Tempo?54:command==MikroTransport.Browse?57:command==MikroTransport.Step?61:command==MikroTransport.Duplicate?63:34;Send(0xb0,cc,127);Send(0xb0,cc,0);}
+ public void Transport(MikroTransport command){if(command==MikroTransport.GridFeedback || command==MikroTransport.FixedVelocity || command==MikroTransport.SixteenVelocity)return;int cc=command==MikroTransport.Play?20:command==MikroTransport.Stop?21:command==MikroTransport.Record?22:command==MikroTransport.TapTempo?25:command==MikroTransport.Metronome?26:command==MikroTransport.Follow?27:command==MikroTransport.Mute?29:command==MikroTransport.Solo?30:command==MikroTransport.PadMode?31:command==MikroTransport.KeyboardMode?32:command==MikroTransport.Events?39:command==MikroTransport.Restart?45:command==MikroTransport.Loop?46:command==MikroTransport.Erase?47:command==MikroTransport.Volume?48:command==MikroTransport.Tempo?54:command==MikroTransport.Browse?57:command==MikroTransport.Step?61:command==MikroTransport.Duplicate?63:command==MikroTransport.Plugin?80:34;Send(0xb0,cc,127);Send(0xb0,cc,0);}
+ public void DeviceTurn(int delta,bool fine){for(int i=0;i<Math.Abs(delta);i++)Send(0xb0,fine?84:83,delta>0?1:127);}
+ public void DeviceNavigate(int direction,bool device){Send(0xb0,device?82:81,direction>0?1:127);}
+ public void DeviceClose(){Send(0xb0,85,127);Send(0xb0,85,0);}
+ public void NavigationToggle(){Send(0xb0,86,127);Send(0xb0,86,0);}
+ public void NavigationPage(int direction){Send(0xb0,87,direction>0?1:127);}
+ public void NavigationTurn(int delta,bool fast){for(int i=0;i<Math.Abs(delta);i++)Send(0xb0,fast?89:88,delta>0?1:127);}
+ public void ViewToggle(){Send(0xb0,90,127);Send(0xb0,90,0);}
  public void VolumeTurn(int delta,bool coarse=false){for(int i=0;i<Math.Abs(delta);i++)Send(0xb0,coarse?53:49,delta>0?1:127);}
  public void BrowserTurn(int delta){delta=Math.Max(-63,Math.Min(63,delta));if(delta!=0)Send(0xb0,58,delta>0?delta:128+delta);}
  public void BrowserPress(bool back){Send(0xb0,back?60:59,127);Send(0xb0,back?60:59,0);}

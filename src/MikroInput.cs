@@ -2,7 +2,7 @@
 
 // Mikro MK3 native reports, validated against the local 2026-10-17 capture.
 // No device I/O: callbacks must enqueue/send immediately and must not write LEDs.
-enum MikroTransport { Play, Stop, Record, TapTempo, Metronome, Follow, GridFeedback, Mute, Solo, FixedVelocity, SixteenVelocity, PadMode, KeyboardMode, ScaleToggle, Events, Restart, Loop, Erase, Volume, Tempo, Browse, Step, Duplicate, Favorites, Pitch, Mod, Pattern, Scene }
+enum MikroTransport { Play, Stop, Record, TapTempo, Metronome, Follow, GridFeedback, Mute, Solo, FixedVelocity, SixteenVelocity, PadMode, KeyboardMode, ScaleToggle, Events, Restart, Loop, Erase, Volume, Tempo, Browse, Step, Duplicate, Favorites, Pitch, Mod, Pattern, Scene, Plugin, Navigate, ViewToggle }
 sealed class MikroInput {
  readonly bool[] commandPads=new bool[16];
  readonly int[] held=new int[16];readonly int[] voices=new int[128];ulong buttons;int? encoder;bool arrowChord,gridHold;
@@ -70,12 +70,15 @@ sealed class MikroInput {
     if(Group && previewTransition){NavigateArrows(current,down);continue;}
     if(previewTransition){if(Select && (down&(1UL<<39))!=0 && Transport!=null)Transport(MikroTransport.ScaleToggle);arrowChord=(current&((1UL<<8)|(1UL<<9)))!=0;continue;}
     if(patternSelection){NavigateArrows(current,down);continue;}
+    if(Shift && (down&(1UL<<31))!=0 && Transport!=null)Transport(MikroTransport.ViewToggle);
+    if(Shift && (down&(1UL<<34))!=0 && Transport!=null)Transport(MikroTransport.Navigate);
     if(nextGrid && !gridHold && (oldShift!=Shift || (down&(1UL<<21))!=0)){gridHold=true;if(Grid!=null)Grid(true);}
     if((down&(1UL<<2))!=0 && Transport!=null)Transport(MikroTransport.Browse);
     if((down&(1UL<<30))!=0 && Transport!=null)Transport(MikroTransport.Step);
     if((down&(1UL<<32))!=0 && Transport!=null)Transport(MikroTransport.Pattern);
-    if((down&(1UL<<31))!=0 && Transport!=null)Transport(MikroTransport.Scene);
+    if((down&(1UL<<31))!=0 && !Shift && Transport!=null)Transport(MikroTransport.Scene);
     if((down&(1UL<<35))!=0 && Transport!=null)Transport(MikroTransport.Duplicate);
+    if((down&(1UL<<6))!=0 && Transport!=null)Transport(MikroTransport.Plugin);
     if((down&(1UL<<5))!=0 && Transport!=null)Transport(MikroTransport.Tempo);
     if((down&(1UL<<3))!=0 && Transport!=null)Transport(MikroTransport.Volume);
     if((down&(1UL<<18))!=0 && Transport!=null)Transport(Shift?MikroTransport.Loop:MikroTransport.Restart);

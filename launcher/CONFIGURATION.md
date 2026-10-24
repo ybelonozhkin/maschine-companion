@@ -21,6 +21,7 @@ DawProcesses=Ableton Live*;FL;FL64;FL (scaled);FL64 (scaled);FL (compatible memo
 | `HoldMilliseconds` | Launch hold time: 500-10000 ms. |
 | `StandbyLed` | Enable or disable the standby light and Vegas animation. |
 | `StandbyBrightness` | `Dim` (default), `Normal`, or `Bright`. These are hardware levels, not percentages. |
+| `DisplayDim` | Minimum OLED contrast when `true`; normal contrast when `false` (default). Also controlled by **Dim** in the tray. |
 | `EnableClose` | Allow normal close requests for the configured application. |
 | `CloseHoldMilliseconds` | Exit hold time: 1000-10000 ms. |
 | `PauseWhenDawRunning` | Pause for listed DAWs when `true` (default). Set `false` to ignore the list. |

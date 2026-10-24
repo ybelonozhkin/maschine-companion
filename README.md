@@ -14,15 +14,18 @@ Tested with **Live 12.4.6 Standard on Windows 11 x64**. The companion uses the M
 | --- | --- |
 | Play drums and instruments | Pad Mode; encoder changes note banks. |
 | Play scales | Keyboard; arrows choose Root Note, Scale or Scale Mode; encoder changes the value. |
-| Repeat notes | Hold Note Repeat; arrows choose Rate or Swing, encoder changes the value. |
+| Repeat notes | Hold Note Repeat, or pin it with Shift + Note Repeat; arrows choose Rate or Swing. |
 | Play arpeggios | Note Repeat in Keyboard mode; note order, octaves, gate, swing and Latch. Arp Rhythm is beta. |
 | Edit a pattern | Step; encoder changes pages, Select auditions sounds, Duplicate doubles the loop. |
 | Launch clips | Pattern; 4-by-4 Session grid, encoder scrolls scenes, Shift + encoder scrolls track columns. |
 | Launch scenes | Scene; four pads in the right column, encoder scrolls scenes. |
+| Navigate Arrangement | Shift + Variation; Position and Markers pages. Shift + Scene switches Session / Arrangement views. |
 | Select and edit notes | Events and the editing commands printed on the pads. |
 | Load sounds | Browse; encoder navigates, press to expand or load, Favorites toggles the red Collection. |
+| Adjust devices | Plug-in; arrows select parameters, Shift + arrows select devices. Encoder adjusts values; Shift gives fine control. |
 | Control playback | Play, Stop, Rec, Restart, Tap and Follow; Shift accesses Loop and Metronome. |
-| Select and mix tracks (navigation: beta) | Group + arrows select tracks; Group + Shift + right creates a MIDI track. Mute, Solo and Volume affect the selected track. |
+| Select tracks (beta) | Group + arrows select tracks; Group + Shift + right creates a MIDI track. |
+| Mix the selected track | Mute, Solo and Volume. Volume changes by 0.5 dB, or 0.1 dB with Shift; encoder press resets it to 0 dB. |
 | Change expression | Fixed Vel / 16 Vel, Pitch and Mod on the Smart Strip. |
 
 See [installation and requirements](GETTING-STARTED.md#ableton-live-installation) and the [full controls guide](ableton/README.md). Arm tracks manually for recording. Before loading Maschine as a plug-in, choose **Pause** in the tray; choose **Resume** after releasing the controller from Maschine.

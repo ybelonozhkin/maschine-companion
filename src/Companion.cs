@@ -76,7 +76,7 @@ sealed class StandbyVegas {
 }
 class Settings {
  public bool EnableAbleton=false;
- public string MidiActivityInputs="";public int FixedVelocity=127;
+ public string MidiActivityInputs="";public int FixedVelocity=127;public bool DisplayDim;
  public string Executable,Arguments="";public int HoldMs=1200;public bool StandbyLed=true,EnableClose=true,PauseWhenDawRunning=true;public int CloseHoldMs=2000;public string StandbyBrightness="Dim";public const string DefaultDaws="Ableton Live*;FL;FL64;FL (scaled);FL64 (scaled);FL (compatible memory);reaper;Cubase*;Nuendo*;Studio One;Bitwig Studio;ProTools;Cakewalk;Sonar";public string[] DawProcesses=ParseDaws(DefaultDaws);
  public byte StandbyBrightnessValue {get{return BrightnessValue(StandbyBrightness);}}
  public static byte BrightnessValue(string value) {
@@ -102,6 +102,7 @@ class Settings {
   foreach(var pair in values) {
    switch(pair.Key.ToLowerInvariant()) {
     case "enableableton":s.EnableAbleton=bool.Parse(pair.Value);break;
+    case "displaydim":s.DisplayDim=bool.Parse(pair.Value);break;
     case "fixedvelocity":s.FixedVelocity=int.Parse(pair.Value);if(s.FixedVelocity<1 || s.FixedVelocity>127)throw new Exception("FixedVelocity must be 1..127");break;
     case "midiactivityinputs":s.MidiActivityInputs=pair.Value;break;
     case "executable":s.Executable=Environment.ExpandEnvironmentVariables(pair.Value.Trim('"'));break;
@@ -178,11 +179,36 @@ static class Processes {
   foreach(string name in new[]{"Controller Editor","Komplete Kontrol"}){var found=Process.GetProcessesByName(name);bool any=found.Length>0;foreach(var p in found)p.Dispose();if(any)return true;}return false;
  }
 }
+static class DisplayContrast {
+ // Observed through the licensed Hardware Preferences UI on Mikro MK3.
+ public static byte[] Report(bool dim,int length) {
+  if(length!=33)throw new Exception("Unsupported HID feature length="+length);
+  var report=new byte[length];byte[] prefix={0xf8,0x80,0,0x20,0,1,0,0,0,(byte)(dim?0:100),0};Array.Copy(prefix,report,prefix.Length);return report;
+ }
+ public static void Save(string path,bool dim) {
+  var lines=new List<string>(File.ReadAllLines(path));bool found=false;
+  for(int i=0;i<lines.Count;i++){string line=lines[i].Trim();int eq=line.IndexOf('=');if(eq>0 && string.Equals(line.Substring(0,eq).Trim(),"DisplayDim",StringComparison.OrdinalIgnoreCase)){lines[i]="DisplayDim="+(dim?"true":"false");found=true;}}
+  if(!found)lines.Add("DisplayDim="+(dim?"true":"false"));
+  string temporary=path+".tmp";try{File.WriteAllLines(temporary,lines.ToArray());File.Replace(temporary,path,null);}finally{if(File.Exists(temporary))File.Delete(temporary);}
+ }
+}
 static class StandbyLight {
  static int busy;
  public static bool IsBusy {get{return Interlocked.CompareExchange(ref busy,0,0)!=0;}}
  public static void Set(string path,byte brightness){RunWrite(delegate{SetCore(path,brightness);});}
  public static void Frame(string path,byte[] report){RunWrite(delegate{SetCore(path,0,report);});}
+ public static void Contrast(string path,bool dim,Func<bool> allowed){RunWrite(delegate {
+  if(!allowed())throw new Exception("Contrast skipped: controller unavailable");
+  using(var file=CreateFile(path,0x40000000,3,IntPtr.Zero,3,0,IntPtr.Zero)) {
+   if(file.IsInvalid)throw new Exception("HID contrast open error="+Marshal.GetLastWin32Error());
+   IntPtr data;if(!HidD_GetPreparsedData(file,out data))throw new Exception("HID descriptor unavailable");
+   IntPtr caps=Marshal.AllocHGlobal(64);int length;
+   try{if(HidP_GetCaps(data,caps)!=0x110000)throw new Exception("HID caps unavailable");length=(ushort)Marshal.ReadInt16(caps,8);}finally{Marshal.FreeHGlobal(caps);HidD_FreePreparsedData(data);}
+   byte[] report=DisplayContrast.Report(dim,length);
+   if(!allowed())throw new Exception("Contrast skipped: controller unavailable");
+   if(!HidD_SetFeature(file,report,(uint)report.Length))throw new Exception("HID contrast error="+Marshal.GetLastWin32Error());
+  }
+ });}
  public static void Marker(string path,bool visible,Func<bool> allowed){RunWrite(delegate {
   foreach(bool bottom in new[]{false,true}) {
    if(!allowed())throw new Exception("Screen write skipped: native owner detected");
@@ -206,6 +232,7 @@ static class StandbyLight {
  [DllImport("hid.dll")] static extern bool HidD_GetPreparsedData(SafeFileHandle file,out IntPtr data);
  [DllImport("hid.dll")] static extern bool HidD_FreePreparsedData(IntPtr data);
  [DllImport("hid.dll")] static extern int HidP_GetCaps(IntPtr data,IntPtr caps);
+ [DllImport("hid.dll",SetLastError=true)] static extern bool HidD_SetFeature(SafeFileHandle file,byte[] report,uint length);
  [DllImport("kernel32.dll",SetLastError=true)] static extern bool WriteFile(SafeFileHandle file,IntPtr data,uint size,IntPtr written,IntPtr overlapped);
  [DllImport("kernel32.dll",SetLastError=true)] static extern bool GetOverlappedResult(SafeFileHandle file,IntPtr overlapped,out uint written,bool wait);
  [DllImport("kernel32.dll",SetLastError=true)] static extern bool CancelIoEx(SafeFileHandle file,IntPtr overlapped);
@@ -243,9 +270,9 @@ class Companion : Form {
  [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern uint GetRawInputDeviceInfo(IntPtr device,uint command,IntPtr data,ref uint size);
  [DllImport("user32.dll",SetLastError=true)] static extern bool RegisterRawInputDevices(Registration[] devices,uint count,uint size);
  [DllImport("user32.dll",SetLastError=true)] static extern uint GetRawInputData(IntPtr input,uint command,IntPtr data,ref uint size,uint header);
- class Controller {public string Path;public HoldGate Hold=new HoldGate();public readonly StandbyVegas Vegas=new StandbyVegas();public bool LedAttempted,LedSet,MarkerSet;public int Action;public long PressedAt;public IntPtr CloseWindow;public uint ClosePid;}
+ class Controller {public string Path;public HoldGate Hold=new HoldGate();public readonly StandbyVegas Vegas=new StandbyVegas();public bool LedAttempted,LedSet,MarkerSet;public bool? ContrastDim;public long ContrastRetryAt;public int Action;public long PressedAt;public IntPtr CloseWindow;public uint ClosePid;}
  readonly Dictionary<IntPtr,Controller> controllers=new Dictionary<IntPtr,Controller>();readonly HashSet<uint> registered=new HashSet<uint>();
- readonly Stopwatch clock=Stopwatch.StartNew();readonly System.Windows.Forms.Timer timer=new System.Windows.Forms.Timer();NotifyIcon tray;StreamWriter log;Settings settings;string root;long lastScan=-1000,launchUntil;bool wasRunning;bool stopping;long lastProcessCheck=-1000;bool runningNow,ledBlockedNow,wasLedBlocked,dawBlockedNow;string dawDetails="";string status="",blockDetails="";ToolStripMenuItem statusItem,resumeItem,pauseItem,startupItem,vegasItem;bool suspended,sessionLocked,sessionNotifications,sessionReportedLocked,sessionDisconnected;long lastDesktopCheck=-1000;long lastWake=-10000;string startupExecutable;readonly TimedPause pause=new TimedPause();Process launchedProcess;long focusDeadline,lastFocusCheck;IntPtr focusWindow;int focusAttempts;
+ readonly Stopwatch clock=Stopwatch.StartNew();readonly System.Windows.Forms.Timer timer=new System.Windows.Forms.Timer();NotifyIcon tray;StreamWriter log;Settings settings;string root;long lastScan=-1000,launchUntil;bool wasRunning;bool stopping;long lastProcessCheck=-1000;bool runningNow,ledBlockedNow,wasLedBlocked,dawBlockedNow;string dawDetails="";string status="",blockDetails="";ToolStripMenuItem statusItem,resumeItem,pauseItem,startupItem,vegasItem,dimItem;bool suspended,sessionLocked,sessionNotifications,sessionReportedLocked,sessionDisconnected;long lastDesktopCheck=-1000;long lastWake=-10000;string startupExecutable;readonly TimedPause pause=new TimedPause();Process launchedProcess;long focusDeadline,lastFocusCheck;IntPtr focusWindow;int focusAttempts;
  readonly EventWaitHandle exitSignal=new EventWaitHandle(false,EventResetMode.ManualReset,"Local\\MaschineCompanionExit");
  AbletonIntegration ableton;ToolStripMenuItem manualPauseItem;readonly object logGate=new object();
  bool abletonHost,nativeBlockedNow;bool logUnavailable;
@@ -254,7 +281,7 @@ class Companion : Form {
   exitSignal.Reset();root=directory;settings=Settings.Load(Path.Combine(root,"companion.ini"));Directory.CreateDirectory(Path.Combine(root,"logs"));
   log=new StreamWriter(Path.Combine(root,"logs","companion-"+DateTime.Now.ToString("yyyyMMdd-HHmmss-fff")+".log"));log.AutoFlush=true;
   ShowInTaskbar=false;WindowState=FormWindowState.Minimized;
-  var menu=new ContextMenuStrip();statusItem=new ToolStripMenuItem("Starting companion..."){Enabled=false};menu.Items.Add(statusItem);manualPauseItem=new ToolStripMenuItem("Pause",null,(s,e)=>PauseIndefinitely());menu.Items.Add(manualPauseItem);pauseItem=new ToolStripMenuItem("Pause for 1 hour",null,(s,e)=>PauseOneHour());menu.Items.Add(pauseItem);resumeItem=new ToolStripMenuItem("Resume",null,(s,e)=>ResumeNow()){Enabled=false};menu.Items.Add(resumeItem);vegasItem=new ToolStripMenuItem("Vegas mode",null,(s,e)=>ToggleVegas());menu.Items.Add(vegasItem);menu.Items.Add("Show status",null,(s,e)=>ShowStatus());menu.Items.Add("Reload config",null,(s,e)=>Reload());startupExecutable=System.Reflection.Assembly.GetExecutingAssembly().Location;startupItem=new ToolStripMenuItem("Start with Windows",null,(s,e)=>ToggleStartup());startupItem.Checked=StartupRegistration.Enabled(startupExecutable);menu.Items.Add(startupItem);menu.Items.Add("Open log folder",null,(s,e)=>Process.Start(Path.Combine(root,"logs")));menu.Items.Add("Exit",null,(s,e)=>Close());
+  var menu=new ContextMenuStrip();statusItem=new ToolStripMenuItem("Starting companion..."){Enabled=false};menu.Items.Add(statusItem);manualPauseItem=new ToolStripMenuItem("Pause",null,(s,e)=>PauseIndefinitely());menu.Items.Add(manualPauseItem);pauseItem=new ToolStripMenuItem("Pause for 1 hour",null,(s,e)=>PauseOneHour());menu.Items.Add(pauseItem);resumeItem=new ToolStripMenuItem("Resume",null,(s,e)=>ResumeNow()){Enabled=false};menu.Items.Add(resumeItem);vegasItem=new ToolStripMenuItem("Vegas mode",null,(s,e)=>ToggleVegas());menu.Items.Add(vegasItem);dimItem=new ToolStripMenuItem("Dim",null,(s,e)=>ToggleDim()){Checked=settings.DisplayDim};menu.Items.Add(dimItem);menu.Items.Add("Show status",null,(s,e)=>ShowStatus());menu.Items.Add("Reload config",null,(s,e)=>Reload());startupExecutable=System.Reflection.Assembly.GetExecutingAssembly().Location;startupItem=new ToolStripMenuItem("Start with Windows",null,(s,e)=>ToggleStartup());startupItem.Checked=StartupRegistration.Enabled(startupExecutable);menu.Items.Add(startupItem);menu.Items.Add("Open log folder",null,(s,e)=>Process.Start(Path.Combine(root,"logs")));menu.Items.Add("Exit",null,(s,e)=>Close());
   tray=new NotifyIcon{Icon=System.Drawing.SystemIcons.Application,Text="Maschine Companion",ContextMenuStrip=menu,Visible=true};
   timer.Interval=50;timer.Tick+=(s,e)=>SafeTick();timer.Start();Log("started hold="+settings.HoldMs+" executable="+settings.Executable);sessionLocked=!SessionState.InputAvailable();if(settings.EnableAbleton)ableton=new AbletonIntegration(Log,activityInputs:settings.MidiActivityInputs,fixedVelocity:settings.FixedVelocity);Scan();sessionNotifications=SessionState.WTSRegisterSessionNotification(Handle,0);if(!sessionNotifications)Log("session notification registration unavailable");SafeTick();
  }
@@ -266,6 +293,19 @@ class Companion : Form {
  }
  void ResumeNow(){pause.Resume();manualPauseItem.Visible=true;if(ableton!=null)ableton.Resume();resumeItem.Enabled=false;pauseItem.Visible=true;lastProcessCheck=-1000;foreach(var c in controllers.Values){c.Action=0;c.Hold.CancelUntilRelease();c.LedAttempted=false;}Log("manual pause ended");SafeTick();}
  void ToggleStartup(){try{StartupRegistration.Set(!startupItem.Checked,startupExecutable);startupItem.Checked=StartupRegistration.Enabled(startupExecutable);Log("Windows startup enabled="+startupItem.Checked);}catch(Exception ex){Log("startup registration error: "+ex.Message);tray.ShowBalloonTip(5000,"Startup error",ex.Message,ToolTipIcon.Error);}}
+ void ToggleDim(){
+  try{bool next=!settings.DisplayDim;DisplayContrast.Save(Path.Combine(root,"companion.ini"),next);settings.DisplayDim=next;dimItem.Checked=next;lastProcessCheck=-1000;Log("display Dim="+next);SafeTick();}
+  catch(Exception ex){Log("display setting error: "+ex.Message);tray.ShowBalloonTip(5000,"Display setting error",ex.Message,ToolTipIcon.Error);}
+ }
+ void UpdateContrast(long now,bool allowed){
+  foreach(var c in controllers.Values){
+   if(!allowed){c.ContrastDim=null;continue;}
+   if(c.ContrastDim==settings.DisplayDim || now<c.ContrastRetryAt || StandbyLight.IsBusy || ableton!=null && ableton.IsWriting)continue;
+   if(c.Path.IndexOf("mi_00",StringComparison.OrdinalIgnoreCase)<0)continue;
+   try{StandbyLight.Contrast(c.Path,settings.DisplayDim,delegate{return !stopping && !suspended && !sessionLocked && !pause.Active(DateTimeOffset.UtcNow) && !AbletonIntegration.NativeBlocked() && (abletonHost?ableton!=null && ableton.OwnsController:!Processes.LedBlocked(settings.Executable) && Processes.DawBlockers(settings).Length==0);});c.ContrastDim=settings.DisplayDim;Log("display contrast "+(settings.DisplayDim?"Dim":"Normal")+" applied");}
+   catch(Exception ex){c.ContrastRetryAt=now+5000;Log("display contrast unavailable: "+ex.Message);}
+  }
+ }
  void ToggleVegas(){
   // Refresh ownership before accepting a menu action; the process cache may be stale.
   lastProcessCheck=-1000;SafeTick();
@@ -284,7 +324,7 @@ class Companion : Form {
   if(next==status)return;status=next;statusItem.Text=next;tray.Text=next.Length>63?next.Substring(0,63):next;tray.Icon=runningNow?System.Drawing.SystemIcons.Information:System.Drawing.SystemIcons.Application;Log("status: "+next+(blockDetails.Length>0?"; "+blockDetails:""));
  }
  protected override void SetVisibleCore(bool value){base.SetVisibleCore(false);}
- void Reload(){try{var next=Settings.Load(Path.Combine(root,"companion.ini"));if(settings.StandbyLed && !next.StandbyLed)foreach(var c in controllers.Values)if(c.LedSet && !LedOutputBlocked()){StandbyLight.Set(c.Path,0);c.LedSet=false;}if(next.EnableAbleton!=settings.EnableAbleton)throw new Exception("Restart the companion after changing EnableAbleton");settings=next;if(ableton!=null)ableton.FixedVelocity=settings.FixedVelocity;lastProcessCheck=-1000;foreach(var c in controllers.Values){c.Hold.CancelUntilRelease();c.Action=0;c.LedAttempted=false;c.Vegas.Ready(false,clock.ElapsedMilliseconds);}Log("config reloaded");}catch(Exception ex){Log("config error: "+ex.Message);tray.ShowBalloonTip(5000,"Config error",ex.Message,ToolTipIcon.Error);}}
+ void Reload(){try{var next=Settings.Load(Path.Combine(root,"companion.ini"));if(settings.StandbyLed && !next.StandbyLed)foreach(var c in controllers.Values)if(c.LedSet && !LedOutputBlocked()){StandbyLight.Set(c.Path,0);c.LedSet=false;}if(next.EnableAbleton!=settings.EnableAbleton)throw new Exception("Restart the companion after changing EnableAbleton");settings=next;dimItem.Checked=settings.DisplayDim;if(ableton!=null)ableton.FixedVelocity=settings.FixedVelocity;lastProcessCheck=-1000;foreach(var c in controllers.Values){c.Hold.CancelUntilRelease();c.Action=0;c.LedAttempted=false;c.Vegas.Ready(false,clock.ElapsedMilliseconds);}Log("config reloaded");}catch(Exception ex){Log("config error: "+ex.Message);tray.ShowBalloonTip(5000,"Config error",ex.Message,ToolTipIcon.Error);}}
  void Scan() {
   uint count=0,size=(uint)Marshal.SizeOf(typeof(Device));if(GetRawInputDeviceList(null,ref count,size)==uint.MaxValue){Log("Raw Input enumeration failed");return;}
   Device[] devices=new Device[count];if(GetRawInputDeviceList(devices,ref count,size)==uint.MaxValue)return;
@@ -324,6 +364,7 @@ class Companion : Form {
   if(now-lastProcessCheck>=500){lastProcessCheck=now;var snapshot=Processes.Observe(settings);runningNow=snapshot.Running;abletonHost=snapshot.AbletonRunning;nativeBlockedNow=snapshot.NativeOwner;dawDetails=snapshot.DawDetails;dawBlockedNow=dawDetails.Length>0;ledBlockedNow=snapshot.LedBlocked;blockDetails=dawBlockedNow?dawDetails:snapshot.RunningDetails.Length>0?snapshot.RunningDetails:snapshot.NativeDetails;}
   if(vegasItem.Checked && (runningNow || abletonHost)){vegasItem.Checked=false;Log("manual Vegas mode reset: application started");}
   foreach(var c in controllers.Values)c.Vegas.Ready(vegasItem.Checked && settings.StandbyLed && !pause.Active(DateTimeOffset.UtcNow) && !abletonHost && !runningNow && !ledBlockedNow && now>=launchUntil && !c.Hold.IsDown && !c.Vegas.InputHeld && !c.MarkerSet,now);
+  UpdateContrast(now,!pause.Active(DateTimeOffset.UtcNow) && !nativeBlockedNow && !runningNow && now>=launchUntil && (abletonHost?ableton!=null && ableton.OwnsController:!ledBlockedNow));
   if(ableton!=null){
    string controllerPath=null;foreach(var c in controllers.Values){controllerPath=c.Path;break;}
    if(abletonHost)foreach(var c in controllers.Values)if(c.LedSet){
@@ -433,7 +474,7 @@ class Companion : Form {
  void WakeDetected(){
   long now=clock.ElapsedMilliseconds;if(!suspended && now-lastWake<2000)return;
   suspended=false;if(ableton!=null)ableton.ResetState();lastWake=now;lastScan=-1000;lastProcessCheck=-1000;retryTickAt=0;launchUntil=0;FinishFocus();
-  foreach(var c in controllers.Values){c.Vegas.Ready(false,now);c.Action=0;c.Hold.CancelUntilRelease();c.LedSet=false;c.LedAttempted=false;}
+  foreach(var c in controllers.Values){c.Vegas.Ready(false,now);c.Action=0;c.Hold.CancelUntilRelease();c.LedSet=false;c.LedAttempted=false;c.ContrastDim=null;c.ContrastRetryAt=0;}
   Log("system resume: controller inventory and standby state refreshed");SafeTick();
  }
  protected override void WndProc(ref Message m) {
@@ -504,6 +545,29 @@ c.Hold.Input(pressed,clock.ElapsedMilliseconds);if(!pressed){c.Action=0;ClearLau
 static class Tests {
  static void Check(bool condition,string name){if(!condition)throw new Exception("FAIL "+name);}
  public static void Run() {
+  {
+   DeviceState device;
+   Check(DeviceState.TryParse("MDEV1 1 1 1 0 1 1 0 RmlsdGVy Q3V0b2Zm Mi40MCBrSHo= ready".Split(' '),out device) && device.Name=="Filter" && device.Value=="2.40 kHz" && device.Previous && !device.Next,"device feedback parses formatted labels and separate navigation");
+   Check(!DeviceState.TryParse("MDEV1 1 0 1 0 1 1 0 - - - ready".Split(' '),out device),"unavailable device cannot be enabled");
+   Check(!DeviceState.TryParse("MDEV1 1 1 1 0 1 1 0 !!! - - ready".Split(' '),out device),"malformed device label is rejected");
+   NavigationState navigation;
+   Check(NavigationState.TryParse("MNAV1 2 1 1 VmVyc2U= ready".Split(' '),out navigation) && navigation.Page==1 && navigation.Label=="Verse","navigation feedback parses page and label");
+   Check(!NavigationState.TryParse("MNAV1 2 1 2 VmVyc2U= ready".Split(' '),out navigation),"navigation rejects invalid pages");
+   Check(!NavigationState.TryParse("MNAV1 2 1 0 AQ== ready".Split(' '),out navigation),"navigation rejects screen control characters");
+  }
+  {
+   string config=Path.GetTempFileName();
+   try{
+    string executable=Process.GetCurrentProcess().MainModule.FileName;
+    File.WriteAllLines(config,new[]{"# Keep this comment","Executable="+executable,"StandbyBrightness=Bright"});
+    Check(!Settings.Load(config).DisplayDim,"display defaults to normal");
+    DisplayContrast.Save(config,true);Check(Settings.Load(config).DisplayDim && File.ReadAllText(config).Contains("# Keep this comment") && Settings.Load(config).StandbyBrightness=="Bright","Dim persists without replacing other settings");
+    DisplayContrast.Save(config,false);Check(!Settings.Load(config).DisplayDim,"Dim can be disabled and reloaded");
+   }finally{File.Delete(config);}
+   byte[] dim=DisplayContrast.Report(true,33),normal=DisplayContrast.Report(false,33);
+   Check(dim[9]==0 && normal[9]==100 && dim[0]==0xf8 && dim[1]==0x80 && dim[3]==0x20 && dim[5]==1,"contrast uses observed minimum and normal values");
+   for(int i=0;i<dim.Length;i++)if(i!=9)Check(dim[i]==normal[i],"Dim changes only the contrast parameter");
+  }
   Check(LiveBrowserKeys.JumpTarget(4,20,6)==10 && LiveBrowserKeys.JumpTarget(10,20,-6)==4
    && LiveBrowserKeys.JumpTarget(18,20,6)==19 && LiveBrowserKeys.JumpTarget(2,20,-6)==0
    && LiveBrowserKeys.JumpTarget(-1,0,6)==-1,"browser jumps six rows directly and clamps at list boundaries");

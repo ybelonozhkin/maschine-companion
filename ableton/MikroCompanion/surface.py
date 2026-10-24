@@ -12,7 +12,9 @@ from .clip_activity import ClipActivity
 from .keyboard import Keyboard
 from .editing import Editor
 from .selection import NoteSelection
+from .devices import DeviceControl
 from .mixer import Mixer
+from .navigation import Navigation
 from .browser import Browser
 from .sequencer import Sequencer
 from .pattern import PatternGrid
@@ -35,6 +37,13 @@ class MikroCompanion(ControlSurface):
         self._track = None
         self._rack = None
         self._mixer = Mixer(self.song())
+        self._navigation = Navigation(self.song())
+        self._last_navigation_packet = None
+        self._last_navigation_error = None
+        self._devices = DeviceControl(self.song(), lambda: self.application().view.show_view("Detail/DeviceChain"))
+        self._device_previous = (False, False)
+        self._last_device_packet = None
+        self._last_device_error = None
         self._browser = Browser(self.application(), self._browser_key)
         self._browser_previous = (False, False)
         self._sequencer = Sequencer(self.song(), self._clip_editor_visible, self._session_view_focused)
@@ -129,7 +138,7 @@ class MikroCompanion(ControlSurface):
 
         with self.component_guard():
             for cc, action in ((52, lambda v: self._mixer_action("reset") if v else None),
-                               (53, lambda v: self._mixer_action("coarse", v if v < 64 else v - 128)),
+                               (53, lambda v: self._mixer_action("fine", v if v < 64 else v - 128)),
                                (54, lambda v: self._mixer_action("toggle_tempo") if v else None),
                                (55, lambda v: self._mixer_action("tempo_turn", v if v < 64 else v - 128)),
                                (56, lambda v: self._mixer_action("tempo_turn", v if v < 64 else v - 128, True)),
@@ -155,7 +164,18 @@ class MikroCompanion(ControlSurface):
                                (76, lambda v: self._grid_action("grid_turn", v if v < 64 else v - 128)),
                                (77, lambda v: self._step_select_turn(v)),
                                (78, lambda v: self._scale_set(v)),
-                               (79, lambda v: self._step_select_reset() if v else None)):
+                               (79, lambda v: self._step_select_reset() if v else None),
+                               (80, lambda v: self._device_action("toggle") if v else None),
+                               (81, lambda v: self._device_action("navigate", v if v < 64 else v - 128)),
+                               (82, lambda v: self._device_action("navigate", v if v < 64 else v - 128, True)),
+                               (83, lambda v: self._device_action("turn", v if v < 64 else v - 128)),
+                               (84, lambda v: self._device_action("turn", v if v < 64 else v - 128, True)),
+                               (85, lambda v: self._device_action("close") if v else None),
+                               (86, lambda v: self._navigation_action("toggle") if v else None),
+                               (87, lambda v: self._navigation_action("navigate", v if v < 64 else v - 128)),
+                               (88, lambda v: self._navigation_action("turn", v if v < 64 else v - 128)),
+                               (89, lambda v: self._navigation_action("turn", v if v < 64 else v - 128, True)),
+                               (90, lambda v: self._toggle_document_view() if v else None)):
                 button = ButtonElement(False, MIDI_CC_TYPE, 0, cc)
                 button.add_value_listener(action)
                 setattr(self, "_encoder_control_{}".format(cc), button)
@@ -179,6 +199,8 @@ class MikroCompanion(ControlSurface):
     def _pattern_action(self, action, *args):
         try:
             if action in ("toggle", "toggle_scene"):
+                self._navigation.close()
+                self._devices.close()
                 self._sequencer.grid_enabled = False
                 self._step_return_grid = None
                 scene_mode = action == "toggle_scene"
@@ -222,10 +244,46 @@ class MikroCompanion(ControlSurface):
 
     def _play(self, value):
         if value:
-            self.song().start_playing()
+            self._navigation.play()
+
+    def _navigation_action(self, action, *args):
+        try:
+            getattr(self._navigation, action)(*args)
+        except Exception as error:
+            self._navigation.close()
+            self.log_message("Mikro Companion navigation unavailable: {}".format(error))
+        self._state_dirty = True
+        self.update_display()
+
+    def _toggle_document_view(self):
+        view = self.application().view
+        view.show_view("Arranger" if view.is_view_visible("Session") else "Session")
+        self._state_dirty = True
+        self.update_display()
+
+    def _device_action(self, action, *args):
+        if action == "toggle":
+            self._navigation.close()
+        was_enabled = self._devices.enabled
+        if action == "toggle" and not was_enabled:
+            self._device_previous = (self._mixer.enabled, self._mixer.tempo)
+        try:
+            getattr(self._devices, action)(*args)
+            if self._devices.enabled:
+                self._mixer.enabled = self._mixer.tempo = False
+                self._browser.enabled = False
+            elif was_enabled:
+                self._mixer.enabled, self._mixer.tempo = self._device_previous
+        except Exception as error:
+            self._devices.close()
+            self.log_message("Mikro Companion device control unavailable: {}".format(error))
+        self._state_dirty = True
+        self.update_display()
 
     def _mixer_action(self, action, *args):
         if action in ("toggle", "toggle_tempo"):
+            self._navigation.close()
+            self._devices.close()
             self._sequencer.grid_enabled = False
             self._pattern.close()
             self._browser.enabled = False
@@ -248,6 +306,8 @@ class MikroCompanion(ControlSurface):
 
     def _browser_action(self, action, *args):
         if action == "toggle":
+            self._navigation.close()
+            self._devices.close()
             self._sequencer.grid_enabled = False
             self._pattern.close()
         was_enabled = self._browser.enabled
@@ -276,6 +336,8 @@ class MikroCompanion(ControlSurface):
     def _step_action(self, action, *args):
         try:
             if action == "toggle":
+                self._navigation.close()
+                self._devices.close()
                 self._sequencer.grid_enabled = False
                 if self._sequencer.enabled and self._step_return_grid is not None:
                     self._sequencer.enabled = False
@@ -306,6 +368,7 @@ class MikroCompanion(ControlSurface):
 
     def _restart(self, value):
         if value:
+            self._navigation.cancel_start()
             song = self.song()
             song.start_playing()
             song.current_song_time = 0.0
@@ -323,6 +386,8 @@ class MikroCompanion(ControlSurface):
 
     def _events_action(self, action, *args):
         if action == "toggle":
+            self._navigation.close()
+            self._devices.close()
             self._sequencer.grid_enabled = False
             self._step_return_grid = None
             self._pattern.close()
@@ -354,6 +419,8 @@ class MikroCompanion(ControlSurface):
 
     def _pad_mode(self, value):
         if value:
+            self._navigation.close()
+            self._devices.close()
             self._sequencer.grid_enabled = False
             self._step_return_grid = None
             self._pattern.close()
@@ -367,6 +434,8 @@ class MikroCompanion(ControlSurface):
 
     def _keyboard_mode(self, value):
         if value and self._keyboard.available(self.song()):
+            self._navigation.close()
+            self._devices.close()
             self._sequencer.grid_enabled = False
             self._step_return_grid = None
             self._pattern.close()
@@ -811,6 +880,30 @@ class MikroCompanion(ControlSurface):
             if hasattr(self.song(), "tempo"):
                 packet = "MCU1 {} {} {:.2f} ready".format(self._feedback_epoch, int(self._mixer.tempo), self.song().tempo)
                 self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
+            try:
+                device_packet = self._devices.packet(self._feedback_epoch)
+                self._last_device_error = None
+            except Exception as error:
+                self._devices.close()
+                device_packet = "MDEV1 {} 0 0 0 0 0 0 - - - ready".format(self._feedback_epoch)
+                if str(error) != self._last_device_error:
+                    self.log_message("Mikro Companion device state unavailable: {}".format(error))
+                    self._last_device_error = str(error)
+            if device_packet != self._last_device_packet or self._state_dirty or now - self._last_sent >= 0.5:
+                self._socket.sendto(device_packet.encode("ascii"), ("127.0.0.1", 39473))
+                self._last_device_packet = device_packet
+            try:
+                navigation_packet = self._navigation.packet(self._feedback_epoch)
+                self._last_navigation_error = None
+            except Exception as error:
+                self._navigation.close()
+                navigation_packet = "MNAV1 {} 0 0 - ready".format(self._feedback_epoch)
+                if str(error) != self._last_navigation_error:
+                    self.log_message("Mikro Companion navigation state unavailable: {}".format(error))
+                    self._last_navigation_error = str(error)
+            if navigation_packet != self._last_navigation_packet or self._state_dirty or now - self._last_sent >= 0.5:
+                self._socket.sendto(navigation_packet.encode("ascii"), ("127.0.0.1", 39473))
+                self._last_navigation_packet = navigation_packet
             mixer_packet = self._mixer.packet(self._feedback_epoch)
             if mixer_packet is not None and (mixer_packet != self._last_mixer_packet or self._state_dirty or now - self._last_sent >= 0.5):
                 self._socket.sendto(mixer_packet.encode("ascii"), ("127.0.0.1", 39473))

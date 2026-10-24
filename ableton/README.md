@@ -16,6 +16,8 @@ Choose **Pause** in the tray before loading Maschine as a plug-in or giving the 
 
 The OLED shows the current parameter and value. An inverse value is the encoder target; lit arrows indicate another parameter page. Hold **Group** to see the selected track's number and name.
 
+Check **Dim** in the tray for minimum OLED contrast, or uncheck it for normal contrast. The setting is saved.
+
 Available buttons are dim and active functions are bright. Drum Rack pads show occupied cells in the track color. The selected sound stays brighter; played notes flash. Other instruments light all 16 pads.
 
 ## Playing and transport
@@ -31,6 +33,7 @@ Pads send velocity-sensitive MIDI notes to the track receiving **Mikro Companion
 | Restart | Start playback from Arrangement position 1.1.1. |
 | Shift + Restart | Toggle Arrangement Loop. |
 | Follow | Toggle playback follow/scroll. |
+| Shift + Scene | Switch between Session and Arrangement views. |
 
 In Session, select a scene or clip before recording; the recording clip opens in the editor. In Arrangement, place the playhead and use Rec and Play. Rec alone does not start Arrangement playback. Track arming remains manual.
 
@@ -41,6 +44,19 @@ MidiActivityInputs=Launchkey MK4 37 MIDI;MIDIIN2 (Launchkey MK4 37 MIDI)
 ```
 
 Names support `*` wildcards. Leave the value empty to disable this. These lights show incoming strikes regardless of Live's track routing.
+
+## Arrangement navigation
+
+Press **Shift + Variation (Navigate)** to enter or leave navigation. The arrows select two pages:
+
+| Page | Encoder | Shift + encoder |
+| --- | --- | --- |
+| Position | Move one bar | Move four bars |
+| Markers | Previous / next Arrangement locator | Same |
+
+The screen shows the position or locator name. Moving while stopped sets the next Play position; moving during playback keeps transport running. Pads retain their current function.
+
+Navigation works in both Session and Arrangement views and remembers the last page. **Shift + Scene** switches the visible view while keeping the current controller mode. The arrows stop at the first and last navigation page.
 
 ## Pad Mode and Keyboard
 
@@ -88,7 +104,7 @@ Hold Shift in Pad Mode, Keyboard or Step to use the commands printed on the pads
 
 Edits use the MIDI clip open on the selected track. They affect selected notes, or **all notes in the clip if nothing is selected**. Undo and Redo use Live's global history.
 
-Quantize uses the clip grid; Quantize 50% moves notes halfway to it. Nudge moves by half a grid division. Both are unavailable with the grid off. Transpose moves by 1 or 12 semitones, including with Scale Mode on. Each edit is one undo step.
+Quantize moves notes to the straight clip grid; Quantize 50% moves them halfway to it. Nudge moves by half a grid division. Both are unavailable with the grid off. Transpose moves by 1 or 12 semitones, including with Scale Mode on. Each edit is one undo step.
 
 Step Undo/Redo, Clear, Clear Auto, Copy and Paste are unassigned.
 
@@ -96,7 +112,7 @@ Step Undo/Redo, Clear, Clear Auto, Copy and Paste are unassigned.
 
 | Mode | Encoder | Shift + encoder | Encoder press |
 | --- | --- | --- | --- |
-| Volume | Fine fader adjustment | Whole dB | Reset to 0 dB |
+| Volume | 0.5 dB steps | 0.1 dB steps | Reset to 0 dB |
 | Tempo | Whole BPM | Whole BPM | No action |
 
 The screen shows Live's current value. Press the mode button again to return to the previous encoder function.
@@ -151,6 +167,21 @@ Release Select to return to steps. Release audition pads before using them as st
 
 Press Step again to return to the mode you entered from, including Pattern or Scene. Changing the selected clip or track exits Step; closing an existing clip's editor also exits it.
 
+## Plug-in parameters
+
+Press **Plug-in** to control the selected device on the current track. Press it again to return. Pads keep their current playing mode.
+
+| Control | Action |
+| --- | --- |
+| **Left / Right** | Select the previous or next parameter. |
+| **Shift + Left / Right** | Select the previous or next device in the chain. |
+| **Encoder** | Change a continuous parameter by 1/127 of its range; a discrete parameter by one choice. |
+| **Shift + encoder** | Adjust continuous parameters ten times more finely; discrete parameters still move by one choice. |
+
+The display shows the parameter name and its value in Live's units. Device names appear briefly when switching devices. Navigation stops at the ends; unassigned directions stay dark. Selecting another device with the mouse also changes the controller's target.
+
+For third-party plug-ins, expose the controls you want through Live's **Configure** panel. Devices inside a Rack chain can first be selected in Live; Shift + arrows then navigates that chain.
+
 ## Note Repeat
 
 In **Pad Mode**, hold **Note Repeat** and play pads to repeat their notes. Use the arrows to choose Rate or Swing, then turn the encoder. Holding **Swing** also gives direct access to swing.
@@ -159,7 +190,9 @@ Rate ranges from 1/1 to 1/128, including triplets marked **T**; the default is 1
 
 Repeat follows Live's tempo and playback grid. With transport stopped, it runs at the same tempo using a local clock. Press harder or ease off to change subsequent repeat velocities. Fixed Vel and 16 Vel keep their assigned values. Live records the generated notes with the track's normal Arm settings.
 
-Release Note Repeat to stop repeating. Track changes, pause or disconnection also stop it. Note Repeat is unavailable in Step, Events and Browse.
+**Shift + Note Repeat** pins Note Repeat so you can release the button. Press **Note Repeat** without Shift to turn it off. Pads still need to be held; releasing them stops their notes. While Shift is held, a bright Note Repeat button means the mode is pinned.
+
+Without pinning, releasing Note Repeat turns it off. Track changes, pause or disconnection also stop it and clear pinning. Note Repeat is unavailable in Step, Events and Browse.
 
 ## Arpeggiator in Keyboard
 

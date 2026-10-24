@@ -19,6 +19,7 @@ You can change the target application and hold times in `companion.ini`. If seve
 - **Pause for 1 hour** pauses the companion for an hour.
 - **Pause / Resume** pauses until you resume. Restarting the companion also clears a manual pause.
 - **Vegas mode** animates the lights while the controller is idle. It switches off when Live or Maschine starts, or when the companion restarts.
+- **Dim** lowers the OLED contrast to its minimum. Uncheck it to restore normal contrast. The setting is saved.
 - **Show status** explains whether the companion is ready or paused.
 - **Reload config** applies changes to `companion.ini`; invalid settings leave the previous config active.
 - **Start with Windows** enables startup for your account. Disable it before moving or removing the app, then enable it again from its new location.

@@ -170,6 +170,11 @@ class MikroInputTests {
   foreach(int hardwarePad in new[]{3,7,11,15,0,4,8,12}){sceneInput.Feed(Pad(hardwarePad,0x10,1600));sceneInput.Feed(Pad(hardwarePad,0x30,0));}
   Check(string.Join(",",sceneLaunches)=="40,41,42,43"&&sceneNotes==0,"Scene only right column launches four scenes top to bottom");
   Check(sceneButtons.Count==1&&sceneButtons[0]==MikroTransport.Scene,"Scene physical button mapping and duplicate suppression");
+  var navigationInput=new MikroInput();var navigationCommands=new List<MikroTransport>();navigationInput.Transport+=navigationCommands.Add;
+  var navigationReport=new byte[64];navigationReport[0]=1;navigationReport[4]=130;navigationInput.Feed(navigationReport);navigationInput.Feed(navigationReport);
+  navigationReport[4]=2;navigationInput.Feed(navigationReport);navigationReport[5]=4;navigationInput.Feed(navigationReport);navigationInput.Feed(navigationReport);
+  navigationReport[4]=0;navigationInput.Feed(navigationReport);
+  Check(navigationCommands.Count==2&&navigationCommands[0]==MikroTransport.ViewToggle&&navigationCommands[1]==MikroTransport.Navigate,"Shift Scene and Variation have separate commands and suppress duplicate presses");
   Console.WriteLine("PASS captured pads/velocity/chords/transport, duplicate suppression, reset, malformed input, two-block report, Pattern and Scene launch lifecycle");return 0;
  }
 }

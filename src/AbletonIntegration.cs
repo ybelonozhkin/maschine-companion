@@ -13,6 +13,10 @@ using System.Drawing;
 using System.Drawing.Text;
 
 sealed class AbletonIntegration : IDisposable {
+ NavigationState navigationState;
+ bool NavigationMode {get{return navigationState!=null && navigationState.Epoch==feedbackEpoch && navigationState.Enabled;}}
+ DeviceState deviceState;long deviceTitleUntil;
+ bool DeviceMode {get{return !NavigationMode && deviceState!=null && deviceState.Epoch==feedbackEpoch && deviceState.Enabled;}}
  long gridEpoch=-1,noteTargetEpoch=-1;bool gridAvailable,gridHeld,targetNotes=true,targetMute=true;string gridText="1/16";
  bool GridMode {get{return gridHeld && gridEpoch==feedbackEpoch && gridAvailable;}}
  bool NotesAvailable {get{return noteTargetEpoch!=feedbackEpoch || targetNotes;}}
@@ -20,11 +24,11 @@ sealed class AbletonIntegration : IDisposable {
  long eventsEpoch=-1;bool eventsAvailable,eventsEnabled,eventsErase;long loopEpoch=-1;bool loopEnabled;int eventsPresent,eventsSelected;
  int editMask,pendingEditMask;long editEpoch=-1;readonly long[] editFlash=new long[16];
  long mixerEpoch=-1;bool volumeAvailable,volumeEnabled,trackLeft,trackRight;string volumeText="";
- bool VolumeMode {get{return mixerEpoch==feedbackEpoch && volumeEnabled;}}
+ bool VolumeMode {get{return !NavigationMode && mixerEpoch==feedbackEpoch && volumeEnabled;}}
  long tempoEpoch=-1;bool tempoEnabled;string tempoText="";
- bool TempoMode {get{return tempoEpoch==feedbackEpoch && tempoEnabled;}}
+ bool TempoMode {get{return !NavigationMode && tempoEpoch==feedbackEpoch && tempoEnabled;}}
  long browserEpoch=-1;bool browserEnabled;
- bool BrowserMode {get{return browserEpoch==feedbackEpoch && browserEnabled;}}
+ bool BrowserMode {get{return !NavigationMode && browserEpoch==feedbackEpoch && browserEnabled;}}
  PatternState pattern;
  bool PatternMode {get{return pattern!=null && pattern.Epoch==feedbackEpoch && pattern.Enabled;}}
  bool SceneMode {get{return PatternMode && pattern.SceneMode;}}
@@ -35,7 +39,7 @@ sealed class AbletonIntegration : IDisposable {
  bool StepPreview {get{return StepMode && input.Select;}}
  bool MelodicPreview {get{return KeyboardMode;}}
  bool PatternSelection {get{return PatternMode && !SceneMode && input.Select;}}
- bool EncoderOverlay {get{return VolumeMode || TempoMode || BrowserMode || GridMode;}}
+ bool EncoderOverlay {get{return VolumeMode || TempoMode || BrowserMode || GridMode || DeviceMode || NavigationMode;}}
  KeyboardState keyboard,pendingKeyboard;
  bool KeyboardMode {get{return keyboard!=null && keyboard.Epoch==feedbackEpoch && keyboard.Enabled;}}
  long trackNameEpoch=-1;string trackName="",lastScreenLabel="";
@@ -45,7 +49,7 @@ sealed class AbletonIntegration : IDisposable {
  readonly NoteRepeat repeat;long repeatClockAt=-10000;
  bool RepeatAvailable {get{return ExpressionAvailable && clock.ElapsedMilliseconds-repeatClockAt<1500;}}
  bool RepeatMode {get{return repeat.Enabled;}}
- bool arpView;
+ bool arpView,padRepeatPinned;
  int keyboardPage,repeatPage;
  bool ArpMode {get{return repeat.Arpeggiator;}}
  bool ArpFocus {get{return ArpMode && arpView && !EncoderOverlay;}}
@@ -62,6 +66,7 @@ sealed class AbletonIntegration : IDisposable {
  public string Status {get{return error.Length>0?"Ableton unavailable: "+error:modeChanged?"Paused after MIDI mode: return to native, then Resume":!midi.Ready?"Waiting for MIDI port":!active?"Waiting for Ableton control surface":"Ableton: notes + transport";}}
  public int FixedVelocity {get{return input.FixedValue;}set{if(value<1 || value>127)throw new ArgumentOutOfRangeException("FixedVelocity");input.FixedValue=value;}}
  public bool IsWriting {get{lock(panelGate)return panelTask!=null && !panelTask.IsCompleted;}}
+ public bool OwnsController {get{return active && !modeChanged;}}
  public bool PausedForMidiMode {get{return modeChanged;}}
  public AbletonIntegration(Action<string> logger,Action<string,byte[]> writer=null,int statePort=39473,string activityInputs="",int fixedVelocity=127,Action<int> browserKeyWriter=null,bool showStartupSplash=true){
   flashTimer.Interval=15;flashTimer.Start();flashTimer.Stop();flashTimer.Tick+=(sender,args)=>{RenderPanel();if(!FlashesActive(clock.ElapsedMilliseconds))flashTimer.Stop();};
@@ -74,10 +79,18 @@ sealed class AbletonIntegration : IDisposable {
   input.Note+=(n,v,d)=>{if(active){repeat.Note(n,v,d);if(d && !input.Sixteen)Latch(flashUntil,n);}};input.Transport+=Control;
   input.Pressure+=(n,v)=>{if(active)repeat.Pressure(n,v);};
   input.Repeat+=held=>{
-   if(held && input.Shift){if(active && ArpMode && !input.Group)repeat.SetLatch(!repeat.Latch);return;}
+   if(held && !input.Shift && DeviceMode)midi.DeviceClose();
+   if(held && input.Shift){
+    if(active && !input.Group){
+     if(ArpMode)repeat.SetLatch(!repeat.Latch);
+     else if(!KeyboardMode && RepeatAvailable){padRepeatPinned=!(padRepeatPinned && RepeatMode);repeat.SetEnabled(padRepeatPinned);}
+    }
+    return;
+   }
    if(ArpMode){if(held){if(ArpFocus){input.CancelHeldNotes();ResetRepeat();}else{arpView=true;if(VolumeMode || TempoMode)midi.Transport(MikroTransport.KeyboardMode);}}return;}
    if(held && KeyboardMode && RepeatAvailable){repeat.SetArpeggiator(true);arpView=true;if(VolumeMode || TempoMode)midi.Transport(MikroTransport.KeyboardMode);return;}
-   if(!held || RepeatAvailable)repeat.SetEnabled(held);
+   if(held && padRepeatPinned){padRepeatPinned=false;repeat.SetEnabled(false);return;}
+   if((!held || RepeatAvailable) && !padRepeatPinned)repeat.SetEnabled(held);
   };
   input.Grid+=held=>{if(held){if(active && gridEpoch==feedbackEpoch && gridAvailable){gridHeld=true;midi.GridHold(true);}}else{bool wasHeld=gridHeld;gridHeld=false;if(wasHeld && midi.Ready)midi.GridHold(false);}};
   input.Modifier+=shift=>{if(active)midi.Modifier(shift && !StepPreview && !PatternSelection);};
@@ -97,6 +110,8 @@ sealed class AbletonIntegration : IDisposable {
   if(!active || input.Group)return;
   if(StepPreview)midi.StepSelectTurn(delta);
   else if(GridMode)midi.GridTurn(delta);
+  else if(NavigationMode)midi.NavigationTurn(delta,shift);
+  else if(DeviceMode){deviceTitleUntil=0;midi.DeviceTurn(delta,shift);}
   else if(PatternMode)midi.PatternTurn(delta,!SceneMode && shift);
   else if(ArpFocus)repeat.TurnArp(delta,false);
   else if(RepeatMode && !ArpMode)repeat.Turn(delta,repeatPage==1 || input.SwingHeld);
@@ -112,6 +127,8 @@ sealed class AbletonIntegration : IDisposable {
   left=right=false;
   if(input.Group){left=mixerEpoch==feedbackEpoch && trackLeft;right=input.Shift || mixerEpoch==feedbackEpoch && trackRight;return;}
   if(StepPreview || GridMode)return;
+  if(NavigationMode){left=navigationState.Page>0;right=navigationState.Page<1;return;}
+  if(DeviceMode){left=input.Shift?deviceState.Previous:deviceState.Left;right=input.Shift?deviceState.Next:deviceState.Right;return;}
   if(PatternMode)return;
   if(ArpFocus){left=repeat.ArpLeft;right=repeat.ArpRight;return;}
   if(RepeatMode && !ArpMode){left=repeatPage>0;right=repeatPage<1;return;}
@@ -121,13 +138,18 @@ sealed class AbletonIntegration : IDisposable {
   if(!active || direction==0)return;
   bool left,right;Navigation(out left,out right);if(direction<0?!left:!right)return;
   if(input.Group){input.CancelHeldNotes();ResetRepeat();midi.ResetExpression();if(PatternMode)input.ReleasePatternPads();if(direction>0 && input.Shift)midi.CreateTrack();else midi.Track(direction);return;}
+  if(NavigationMode && !GridMode){midi.NavigationPage(direction);return;}
+  if(DeviceMode){deviceTitleUntil=input.Shift?clock.ElapsedMilliseconds+900:0;midi.DeviceNavigate(direction,input.Shift);return;}
   if(ArpFocus){repeat.TurnArp(direction,true);return;}
   if(RepeatMode && !ArpMode){repeatPage=Math.Max(0,Math.Min(1,repeatPage+direction));return;}
   if(KeyboardMode)keyboardPage=Math.Max(0,Math.Min(2,keyboardPage+direction));
  }
- void ResetRepeat(){repeat.Reset();arpView=false;int ignored;while(generatedFlashes.TryDequeue(out ignored)){} }
+ void ResetRepeat(){repeat.Reset();arpView=padRepeatPinned=false;int ignored;while(generatedFlashes.TryDequeue(out ignored)){} }
  void Control(MikroTransport command){
   if(!active)return;
+  if(command==MikroTransport.ViewToggle){midi.ViewToggle();return;}
+  if(command==MikroTransport.Navigate){midi.NavigationToggle();return;}
+  if(command==MikroTransport.ScaleToggle && NavigationMode)return;
   if(ArpMode){
    if(command==MikroTransport.KeyboardMode)arpView=false;
    if(command==MikroTransport.PadMode || command==MikroTransport.Step || command==MikroTransport.Events || command==MikroTransport.Browse || command==MikroTransport.Pattern || command==MikroTransport.Scene){input.CancelHeldNotes();ResetRepeat();}
@@ -137,7 +159,7 @@ sealed class AbletonIntegration : IDisposable {
   if(command==MikroTransport.Favorites){if(BrowserMode)midi.BrowserFavorite();return;}
   if(command==MikroTransport.Pitch || command==MikroTransport.Mod){if(ExpressionAvailable){midi.ResetExpression();stripPosition=modPosition=0;int selected=command==MikroTransport.Pitch?1:2;stripMode=stripMode==selected?0:selected;}return;}
   if(command==MikroTransport.Duplicate && !StepMode)return;
-  if(command==MikroTransport.ScaleToggle && GridMode)return;
+  if(command==MikroTransport.ScaleToggle && (GridMode || DeviceMode))return;
   if(command==MikroTransport.ScaleToggle && BrowserMode){midi.BrowserPress(input.Shift);return;}
   if(command==MikroTransport.ScaleToggle && StepPreview){midi.StepSelectReset();return;}
   if(command==MikroTransport.ScaleToggle && StepMode && !EncoderOverlay)return;
@@ -209,6 +231,13 @@ sealed class AbletonIntegration : IDisposable {
      && int.TryParse(fields[3],out enabled) && (enabled==0||enabled==1) && enabled<=available
      && int.TryParse(fields[4],out left) && (left==0||left==1) && int.TryParse(fields[5],out right) && (right==0||right==1)){
      try{string label=Encoding.UTF8.GetString(Convert.FromBase64String(fields[6]));if(label.Length<=80 && label.IndexOfAny(new[]{'\r','\n','\0'})<0){mixerEpoch=source;volumeAvailable=available!=0;volumeEnabled=enabled!=0;trackLeft=left!=0;trackRight=right!=0;volumeText=label;}}catch(FormatException){}
+    }continue;
+   }
+   if(fields[0]=="MNAV1"){NavigationState parsed;if(NavigationState.TryParse(fields,out parsed))navigationState=parsed;continue;}
+   if(fields[0]=="MDEV1"){
+    DeviceState parsed;if(DeviceState.TryParse(fields,out parsed)){
+     if(parsed.Enabled && (!DeviceMode || deviceState.Name!=parsed.Name))deviceTitleUntil=clock.ElapsedMilliseconds+900;
+     deviceState=parsed;
     }continue;
    }
    if((fields.Length==7 && fields[0]=="MV1" || fields.Length==8 && fields[0]=="MV2") && fields[fields.Length-1]=="ready"){
@@ -324,9 +353,10 @@ sealed class AbletonIntegration : IDisposable {
    }
   }
   frame[2]=(byte)(BrowserMode?(browserKeys.Favorite?127:124):0);
-  frame[18]=(byte)(RepeatAvailable?(ArpMode && input.Shift?(repeat.Latch?127:124):RepeatMode?127:124):0);frame[5]=(byte)(RepeatMode && !ArpMode?(input.SwingHeld?127:124):0);
+  frame[18]=(byte)(RepeatAvailable?(input.Shift?((ArpMode?repeat.Latch:padRepeatPinned && RepeatMode)?127:124):RepeatMode?127:124):0);frame[5]=(byte)(RepeatMode && !ArpMode?(input.SwingHeld?127:124):0);
   frame[3]=(byte)(BrowserMode && !GridMode?0x7f:0x7c);
   frame[33]=(byte)(PatternMode && !SceneMode?0x7f:0x7c);frame[32]=(byte)(SceneMode?0x7f:0x7c);
+  frame[35]=(byte)(NavigationMode?127:input.Shift?124:0);
   frame[31]=(byte)(steps!=null && steps.Epoch==feedbackEpoch && steps.Available?(StepMode && !EncoderOverlay?0x7f:0x7c):0);
   frame[36]=(byte)(StepMode && steps.Duplicate?0x7c:0);
   frame[19]=(byte)(loopEpoch==feedbackEpoch && loopEnabled?0x7f:0x7c);
@@ -334,6 +364,7 @@ sealed class AbletonIntegration : IDisposable {
   frame[34]=(byte)(eventsEpoch==feedbackEpoch && eventsAvailable?(input.SelectOnly && !EncoderOverlay?0x7f:0x7c):0);
   frame[37]=(byte)(PatternMode && !SceneMode?(input.Select?0x7f:0x7c):StepMode?0x7c:0);
   frame[26]=(byte)(input.Shift?0x7f:0x7c);
+  frame[7]=(byte)(deviceState!=null && deviceState.Epoch==feedbackEpoch && deviceState.Available?(DeviceMode && !GridMode?127:124):0);
   frame[6]=(byte)(TempoMode && !GridMode?0x7f:0x7c);
   frame[4]=(byte)(mixerEpoch==feedbackEpoch && volumeAvailable?(VolumeMode && !GridMode?0x7f:0x7c):0);
   frame[28]=(byte)(PatternMode || KeyboardMode || EncoderOverlay || StepMode || input.SelectOnly?0x7c:0x7f);frame[29]=(byte)(KeyboardMode && !PatternMode && !EncoderOverlay && !StepMode && !input.SelectOnly && !ArpFocus?0x7f:0x7c);
@@ -349,9 +380,10 @@ sealed class AbletonIntegration : IDisposable {
   if(input.Group && input.Shift)frame[10]=0x7f;
   if(PatternSelection){for(int i=1;i<40;i++)if(i!=9 && i!=10)frame[i]=0;frame[33]=frame[37]=0x7f;}
   if(StepPreview){for(int i=1;i<40;i++)frame[i]=0;frame[37]=0x7f;frame[MelodicPreview?29:28]=0x7f;}
+  if(NavigationMode && !StepPreview){frame[35]=127;frame[9]=(byte)(left?124:0);frame[10]=(byte)(right?124:0);}
   frame[15]=(byte)(input.Group?0x7f:0x7c);
   if(input.Group){frame[9]=(byte)(left?0x7c:0);frame[10]=(byte)(right?(input.Shift?0x7f:0x7c):0);}
-  string key=(clock.ElapsedMilliseconds<startupUntil?"startup:":"")+Convert.ToBase64String(frame)+":"+input.BaseNote+":"+input.Fixed+":"+input.FixedValue+":"+input.Sixteen+":"+(input.Sixteen?input.SelectedNote:-1)+":"+KeyboardLabel()+":"+input.SelectOnly+":"+(VolumeMode?volumeText:"")+":"+VolumeMode+":"+TempoMode+":"+(TempoMode?tempoText:"")+":"+BrowserMode+":"+GridMode+":"+(GridMode?gridText:"")+":"+NotesAvailable+":"+StepPreview+":"+(RepeatMode?repeat.Label:"")+":"+(StepMode?StepLabel():"")+":"+(PatternMode?PatternLabel():"");if(key!=lastFrame){lastFrame=key;QueuePanel(path,frame,input.BaseNote);}
+  string key=(clock.ElapsedMilliseconds<startupUntil?"startup:":"")+Convert.ToBase64String(frame)+":"+input.BaseNote+":"+input.Fixed+":"+input.FixedValue+":"+input.Sixteen+":"+(input.Sixteen?input.SelectedNote:-1)+":"+KeyboardLabel()+":"+input.SelectOnly+":"+(VolumeMode?volumeText:"")+":"+VolumeMode+":"+TempoMode+":"+(TempoMode?tempoText:"")+":"+BrowserMode+":"+GridMode+":"+(GridMode?gridText:"")+":"+(DeviceMode?DeviceLabel():"")+":"+(NavigationMode?NavigationLabel():"")+":"+NotesAvailable+":"+StepPreview+":"+(RepeatMode?repeat.Label:"")+":"+(StepMode?StepLabel():"")+":"+(PatternMode?PatternLabel():"");if(key!=lastFrame){lastFrame=key;QueuePanel(path,frame,input.BaseNote);}
  }
  public bool Feed(string controllerPath,byte[] report){
   if(!host)return false;
@@ -379,10 +411,14 @@ sealed class AbletonIntegration : IDisposable {
  string ScreenLabel(int baseNote){
   return ParameterLabel(baseNote);
  }
+ string DeviceLabel(){return clock.ElapsedMilliseconds<deviceTitleUntil?"DEVICE\n"+BankScreen.Mark(deviceState.Name):deviceState.Parameter+"\n"+BankScreen.Mark(deviceState.Value);}
+ string NavigationLabel(){return (navigationState.Page==0?"POSITION":"MARKER")+"\n"+BankScreen.Mark(navigationState.Label);}
  string ParameterLabel(int baseNote){
   if(baseNote<0)return "";
   if(input.Group)return (TrackHeader().Length>0?TrackHeader():"TRACK")+"\n ";
   if(GridMode)return "GRID\n"+BankScreen.Mark(gridText);
+  if(NavigationMode && !StepPreview)return NavigationLabel();
+  if(DeviceMode && !StepPreview)return DeviceLabel();
   if(PatternMode)return PatternLabel();
   if(ArpFocus)return repeat.ArpParameter=="RHYTHM"?BankScreen.Rhythm(repeat.ArpRhythmNumber,repeat.ArpRhythmMask):"ARP "+repeat.ArpParameter+"\n"+BankScreen.Mark(repeat.ArpValue);
   if(RepeatMode && !ArpMode){string[] lines=repeat.Label.Split('\n');bool swing=repeatPage==1 || input.SwingHeld;return (swing?"REPEAT SWING":"REPEAT RATE")+"\n"+BankScreen.Mark(swing?lines[2].Replace("SWING ",""):lines[1]);}
@@ -435,6 +471,28 @@ sealed class AbletonIntegration : IDisposable {
  }
 }
 
+sealed class NavigationState {
+ public long Epoch;public bool Enabled;public int Page;public string Label;
+ public static bool TryParse(string[] fields,out NavigationState state){
+  state=null;if(fields.Length!=6 || fields[0]!="MNAV1" || fields[5]!="ready")return false;
+  long epoch;int enabled,page;
+  if(!long.TryParse(fields[1],out epoch) || epoch<0 || !int.TryParse(fields[2],out enabled) || enabled<0 || enabled>1 || !int.TryParse(fields[3],out page) || page<0 || page>1)return false;
+  string label;try{label=fields[4]=="-"?"":new UTF8Encoding(false,true).GetString(Convert.FromBase64String(fields[4]));}catch(FormatException){return false;}catch(DecoderFallbackException){return false;}
+  if(label.Length>80)return false;foreach(char c in label)if(char.IsControl(c))return false;
+  state=new NavigationState{Epoch=epoch,Enabled=enabled!=0,Page=page,Label=label};return true;
+ }
+}
+sealed class DeviceState {
+ public long Epoch;public bool Available,Enabled,Left,Right,Previous,Next;public string Name,Parameter,Value;
+ public static bool TryParse(string[] fields,out DeviceState state){
+  state=null;if(fields.Length!=12 || fields[0]!="MDEV1" || fields[11]!="ready")return false;
+  long epoch;if(!long.TryParse(fields[1],out epoch) || epoch<0)return false;
+  var flags=new int[6];for(int i=0;i<flags.Length;i++)if(!int.TryParse(fields[i+2],out flags[i]) || flags[i]<0 || flags[i]>1)return false;
+  if(flags[1]>flags[0])return false;
+  var labels=new string[3];try{for(int i=0;i<labels.Length;i++){labels[i]=fields[i+8]=="-"?"":new UTF8Encoding(false,true).GetString(Convert.FromBase64String(fields[i+8]));if(labels[i].Length>80 || labels[i].IndexOfAny(new[]{'\r','\n','\0','\u0001','\u0002','\u0003','\u0004'})>=0)return false;}}catch(FormatException){return false;}catch(DecoderFallbackException){return false;}
+  state=new DeviceState{Epoch=epoch,Available=flags[0]!=0,Enabled=flags[1]!=0,Left=flags[2]!=0,Right=flags[3]!=0,Previous=flags[4]!=0,Next=flags[5]!=0,Name=labels[0],Parameter=labels[1],Value=labels[2]};return true;
+ }
+}
 sealed class PatternState {
  public long Epoch;public bool Enabled,Left,Right,SceneMode;public int Track,Scene,Playing,Triggered,Recording,Tracks,TrackPlaying,Selected=-1,Selectable;public int[] Colors;
  public static bool TryParse(string[] f,out PatternState state){

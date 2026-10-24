@@ -9,7 +9,7 @@ $expected = @(
     'LICENSE','THIRD-PARTY-NOTICES.md','GETTING-STARTED.md','CONTRIBUTING.md','BUILD-INFO.json','SHA256SUMS.txt','ableton/README.md','assets/maschine-button.svg',
     'launcher/README.md','launcher/CONFIGURATION.md'
 )
-foreach ($name in @('__init__.py','model.py','activity.py','clip_activity.py','keyboard.py','editing.py','selection.py','mixer.py','browser.py','sequencer.py','pattern.py','surface.py')) {
+foreach ($name in @('__init__.py','model.py','activity.py','clip_activity.py','keyboard.py','editing.py','selection.py','mixer.py','navigation.py','devices.py','browser.py','sequencer.py','pattern.py','surface.py')) {
     $expected += "ableton/MikroCompanion/$name"
 }
 foreach ($name in @('microsoft-midi-MIT.txt','cppwinrt-MIT.txt','r00tman-MIT.txt','openav-BSD-3-Clause.txt')) { $expected += "LICENSES/$name" }

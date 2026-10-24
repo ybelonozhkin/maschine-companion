@@ -16,10 +16,18 @@ Here, a pad represents a Live track. Drum Rack sounds remain inside their instru
 
 Holding **Mute** or **Solo** while pressing a pad could control that Drum Rack sound. A press and release without a pad would retain the current track-level action. This needs a gesture that avoids toggling the track before the user selects a sound.
 
+## Swing
+
+Use **Swing** and the encoder to adjust Live's swing amount. Define how it works with Quantize and the separate Note Repeat and Arp swing settings, while preserving note selection in Events.
+
+## Humanize
+
+Use **Variation** to humanize selected MIDI notes, or the open clip when no notes are selected. The encoder would set the amount; a press would apply it, with Undo available. Investigate access to Live's native Humanize controls before choosing the implementation.
+
 ## Compatibility testing
 
 Test the Live integration on more Windows 11 systems, including MIDI port creation, sleep recovery and switching between native and MIDI modes. Extend support based on those results.
 
 ## Scope
 
-New functions should follow the labels on the controller and preserve the existing playing modes. Device parameter editing with the encoder is outside the current plan. Maschine project saving belongs to the separate [Maschine Mikro Browser](https://github.com/ybelonozhkin/maschine-mikro-browser) project.
+New functions should follow the labels on the controller and preserve the existing playing modes. Maschine project saving belongs to the separate [Maschine Mikro Browser](https://github.com/ybelonozhkin/maschine-mikro-browser) project.

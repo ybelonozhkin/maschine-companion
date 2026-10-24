@@ -13,8 +13,11 @@ spec.loader.exec_module(module)
 class Parameter:
     min, max, value, is_enabled = 0.0, 1.0, 0.5, True
 
+    def str_for_value(self, value):
+        return "{:.2f} dB".format(80 * value * value - 45)
+
     def __str__(self):
-        return "-6.0 dB"
+        return self.str_for_value(self.value)
 
 
 def track(name):
@@ -45,17 +48,17 @@ class MixerTests(unittest.TestCase):
         self.assertEqual(self.a.mixer_device.volume.value, 0.5)
         self.mixer.toggle()
         self.mixer.turn(1)
-        self.assertAlmostEqual(self.a.mixer_device.volume.value, 0.505)
+        self.assertEqual(str(self.a.mixer_device.volume), "-24.50 dB")
         self.mixer.turn(1000)
-        self.assertEqual(self.a.mixer_device.volume.value, 1)
+        self.assertAlmostEqual(self.a.mixer_device.volume.value, 1)
         self.mixer.navigate(1)
         self.assertTrue(self.mixer.enabled)
         self.mixer.turn(-1000)
-        self.assertEqual(self.b.mixer_device.volume.value, 0)
+        self.assertAlmostEqual(self.b.mixer_device.volume.value, 0)
         self.mixer.toggle()
         self.assertFalse(self.mixer.enabled)
 
-    def test_zero_db_reset_and_whole_db_steps_use_native_curve(self):
+    def test_zero_db_reset_and_fine_steps_use_native_curve(self):
         class Fader(Parameter):
             default_value = 0.75
             def str_for_value(self, value):
@@ -69,12 +72,38 @@ class MixerTests(unittest.TestCase):
         self.mixer.toggle()
         self.mixer.reset()
         self.assertEqual(fader.value, 0.75)
-        self.mixer.coarse(-1)
-        self.assertAlmostEqual(module.Mixer.decibels(str(fader)), -1.0, places=4)
-        self.mixer.coarse(2)
-        self.assertAlmostEqual(module.Mixer.decibels(str(fader)), 1.0, places=4)
-        self.mixer.coarse(500)
+        self.mixer.fine(-1)
+        self.assertAlmostEqual(module.Mixer.decibels(str(fader)), -0.1, places=4)
+        self.mixer.fine(2)
+        self.assertAlmostEqual(module.Mixer.decibels(str(fader)), 0.1, places=4)
+        self.mixer.fine(500)
         self.assertAlmostEqual(fader.value, 1.0)
+
+    def test_two_decimal_curve_returns_to_zero_without_negative_zero(self):
+        fader = self.a.mixer_device.volume
+        self.mixer.toggle()
+        self.mixer.reset()  # No default_value: exercise the inverse lookup.
+        self.assertEqual(str(fader), "0.00 dB")
+        for turn, step in ((self.mixer.turn, 0.5), (self.mixer.fine, 0.1)):
+            for direction in (-1, 1):
+                for index in range(1, 11):
+                    turn(direction)
+                    self.assertEqual(str(fader), "{:.2f} dB".format(direction * index * step))
+                for _ in range(10):
+                    turn(-direction)
+                self.assertEqual(str(fader), "0.00 dB")
+                self.assertAlmostEqual(80 * fader.value ** 2 - 45, 0, places=5)
+
+    def test_steps_follow_mouse_changes_and_selected_track(self):
+        self.mixer.toggle()
+        self.mixer.set_db(-3.27)
+        self.mixer.turn(1)
+        self.assertEqual(str(self.a.mixer_device.volume), "-3.00 dB")
+        self.mixer.fine(-1)
+        self.assertEqual(str(self.a.mixer_device.volume), "-3.10 dB")
+        self.mixer.navigate(1)
+        self.mixer.fine(1)
+        self.assertEqual(str(self.b.mixer_device.volume), "-24.90 dB")
 
     def test_tempo_overlay_is_exclusive_and_bounded(self):
         self.song.tempo = 120.0
@@ -107,7 +136,7 @@ class MixerTests(unittest.TestCase):
         self.mixer.toggle()
         fields = self.mixer.packet(20).split()
         self.assertEqual(fields[:6], ["MX1", "20", "1", "1", "0", "1"])
-        self.assertEqual(base64.b64decode(fields[6]).decode(), "-6.0 dB")
+        self.assertEqual(base64.b64decode(fields[6]).decode(), "-25.00 dB")
         self.a.mixer_device.volume.is_enabled = False
         self.assertEqual(self.mixer.packet(20).split()[2:4], ["0", "0"])
         self.assertFalse(self.mixer.enabled)
