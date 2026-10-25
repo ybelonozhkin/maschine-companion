@@ -215,7 +215,11 @@ class NativeMidiTests {
     var nextBank=Encoding.ASCII.GetBytes("MC3 0 1 0 7 52 ready");sender.Send(nextBank,nextBank.Length,new IPEndPoint(IPAddress.Loopback,39474));
     string screen52=Convert.ToBase64String(BankScreen.Report(52,false));
     Check(SpinWait.SpinUntil(()=>{integration.Tick("test-device",true,false);lock(frames)return screens.Count>=2&&Convert.ToBase64String(LatestTop(screens))==screen52;},1000),"bank acknowledged before strike");
+    var countIn=Encoding.ASCII.GetBytes("MR1 0 120 -4 0 ready");sender.Send(countIn,countIn.Length,new IPEndPoint(IPAddress.Loopback,39474));Thread.Sleep(10);integration.Tick("test-device",true,false);
     integration.Feed("test-device",r);Check(SpinWait.SpinUntil(()=>Count()==2,1000),"HID to MIDI delivery");
+    var afterCountIn=Encoding.ASCII.GetBytes("MR1 0 120 0 1 ready");sender.Send(afterCountIn,afterCountIn.Length,new IPEndPoint(IPAddress.Loopback,39474));
+    for(int tick=0;tick<4;tick++){Thread.Sleep(10);integration.Tick("test-device",true,false);}
+    Check(Count()==2,"recording clock transition does not send a premature physical-pad NoteOff");
     Check(SpinWait.SpinUntil(()=>{lock(frames)return frames[frames.Count-1][52]==31;},1000),"strike lights an empty pad brightly");
     var release=(byte[])r.Clone();release[2]=0x30;release[3]=0;integration.Feed("test-device",release);
     Check(SpinWait.SpinUntil(()=>Count()==3,1000),"release after bright strike");

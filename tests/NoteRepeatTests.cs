@@ -145,7 +145,27 @@ class NoteRepeatTests {
    for(int i=1;i<hits.Count;i++)Check(Math.Abs(hits[i]-hits[i-1]-.125)<.001,"Arp clock delivery does not change note spacing");
   }
  }
+ static void DirectNotesSurviveTransportChanges(){
+  double now=0;var events=new List<string>();
+  using(var repeat=new NoteRepeat((n,v,d)=>events.Add(n+":"+v+":"+d),Console.WriteLine,()=>now,false)){
+   repeat.Sync(120,-4,false);
+   repeat.Note(60,90,true);repeat.Note(64,70,true);
+   now=.05;repeat.Sync(120,0,true); // First transport sample after count-in.
+   Check(events.Count==2,"count-in completion must not release manually held notes when repeat is off");
+   now=.1;repeat.Sync(120,8,true);repeat.Pump();
+   Check(events.Count==2,"transport seek must not release manually held notes");
+   repeat.Note(60,0,false);
+   Check(events.Count==3 && events[2]=="60:0:False","physical release ends only its own manual note");
+   now=.2;repeat.Sync(120,0,false);
+   Check(events.Count==3,"transport stop preserves the other held manual note");
+   repeat.Note(64,0,false);
+   Check(events.Count==4 && events[3]=="64:0:False","remaining manual note ends on physical release");
+   repeat.Note(67,100,true);repeat.Reset();
+   Check(events.Count==6 && events[5]=="67:0:False","explicit reset still releases manual notes");
+  }
+ }
  static int Main(){
+  DirectNotesSurviveTransportChanges();
   double now=0;var events=new List<string>();
   using(var repeat=new NoteRepeat((n,v,d)=>events.Add(n+":"+v+":"+d),Console.WriteLine,()=>now,false)){
    repeat.Sync(120,0,false);repeat.SetEnabled(true);repeat.Note(36,90,true);repeat.Pump();

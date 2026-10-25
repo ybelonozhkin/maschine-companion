@@ -84,7 +84,9 @@ sealed class NoteRepeat : IDisposable {
    double correction=Math.Max(-.002,Math.Min(.002,error*.1));
    anchorBeat=running?(transition || jump || !enabled?observed:before+correction):playing?0:before;
    anchorTime=now;tempo=bpm;playing=running;
-   if(transition || jump){StopVoices();arpCursor=0;lastPulse=double.NegativeInfinity;Regrid();}
+   // Manual notes also pass through this module, but belong to the physical
+   // pad lifetime. Only generated repeat/Arp voices follow transport resets.
+   if(transition || jump){if(enabled)StopVoices();arpCursor=0;lastPulse=double.NegativeInfinity;Regrid();}
   }wake.Set();
  }
  public void SetEnabled(bool value){lock(gate){if(enabled==value && !arpeggiator)return;StopVoices();arpeggiator=latch=false;enabled=value;lastPulse=double.NegativeInfinity;if(enabled)Regrid();}wake.Set();}
