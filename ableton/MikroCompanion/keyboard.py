@@ -58,3 +58,12 @@ class Keyboard:
         name = base64.b64encode(song.scale_name.encode("utf-8")).decode("ascii")
         return "MK2 {} {} {} {} {} {} {} {} ready".format(
             epoch, int(self.enabled), int(song.scale_mode), int(song.root_note), self.start(song, track), pitches, name, 1)
+
+    def octave(self, song, delta):
+        if not self.enabled or not self.available(song) or not delta:
+            return
+        track = song.view.selected_track
+        note = self.start(song, track)
+        root = note % 12
+        octave = max(0, min((127 - root) // 12, note // 12 + delta))
+        self.starts[track] = octave * 12 + root

@@ -179,7 +179,8 @@ class MikroCompanion(ControlSurface):
                                (87, lambda v: self._navigation_action("navigate", v if v < 64 else v - 128)),
                                (88, lambda v: self._navigation_action("turn", v if v < 64 else v - 128)),
                                (89, lambda v: self._navigation_action("turn", v if v < 64 else v - 128, True)),
-                               (90, lambda v: self._toggle_document_view() if v else None)):
+                               (90, lambda v: self._toggle_document_view() if v else None),
+                               (91, lambda v: self._scale_octave(v))):
                 button = ButtonElement(False, MIDI_CC_TYPE, 0, cc)
                 button.add_value_listener(action)
                 setattr(self, "_encoder_control_{}".format(cc), button)
@@ -454,6 +455,12 @@ class MikroCompanion(ControlSurface):
     def _scale_turn(self, value):
         if value and self._keyboard.enabled:
             self._keyboard.adjust(self.song(), value if value < 64 else value - 128)
+            self._layout_changed()
+            self.update_display()
+
+    def _scale_octave(self, value):
+        if value and self._keyboard.enabled:
+            self._keyboard.octave(self.song(), value if value < 64 else value - 128)
             self._layout_changed()
             self.update_display()
 

@@ -126,7 +126,7 @@ sealed class AbletonIntegration : IDisposable {
   else if(VolumeMode)midi.VolumeTurn(delta,shift);
   else if(StepMode){if(!shift)midi.StepTurn(delta);}
   else if(input.SelectOnly)midi.EventTurn(delta,shift);
-  else if(KeyboardMode){if(keyboardPage==2)midi.ScaleMode(delta>0);else if(keyboardPage==1)midi.ScaleTypeTurn(delta);else midi.ScaleTurn(delta);}
+  else if(KeyboardMode){if(keyboardPage==2)midi.ScaleMode(delta>0);else if(keyboardPage==1)midi.ScaleTypeTurn(delta);else if(shift)midi.OctaveTurn(delta);else midi.ScaleTurn(delta);}
   else if(NotesAvailable && !shift)midi.PadBankTurn(delta);
  }
  void Navigation(out bool left,out bool right){

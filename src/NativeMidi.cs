@@ -70,6 +70,7 @@ sealed class NativeMidi : IDisposable {
  public void Modifier(bool shift){Send(0xb0,38,shift?127:0);}
  public void RootTurn(int delta){for(int i=0;i<Math.Abs(delta);i++)Send(0xb0,35,delta>0?1:127);}
  public void ScaleTurn(int delta){for(int i=0;i<Math.Abs(delta);i++)Send(0xb0,33,delta>0?1:127);}
+ public void OctaveTurn(int delta){for(int i=0;i<Math.Abs(delta);i++)Send(0xb0,91,delta>0?1:127);}
  public void SelectNote(int note){Send(0xb0,28,note);}
  public void KeyboardRange(int direction){int cc=direction<0?43:44;Send(0xb0,cc,127);Send(0xb0,cc,0);}
  public void Bank(int direction){int cc=direction==0?36:direction<0?23:24;Send(0xb0,cc,127);Send(0xb0,cc,0);}

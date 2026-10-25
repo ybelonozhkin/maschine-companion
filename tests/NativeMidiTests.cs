@@ -357,6 +357,11 @@ class NativeMidiTests {
     keyboardState(true,major);
     lock(received)received.Clear();control(8,false);control(8,false);
     Check(SpinWait.SpinUntil(()=>{lock(frames)return frames[frames.Count-1][9]==0 && frames[frames.Count-1][10]==124;},1000),"Keyboard parameter selection stops at Root Note");
+    var octaveDial=new byte[64];octaveDial[0]=1;octaveDial[7]=6;integration.Feed("test-device",octaveDial);
+    octaveDial[4]=2;octaveDial[7]=7;integration.Feed("test-device",octaveDial);
+    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(91<<8)|(1<<16)));},1000),"Shift root encoder sends one octave command");
+    octaveDial[4]=0;octaveDial[7]=6;integration.Feed("test-device",octaveDial);
+    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(33<<8)|(127<<16)));},1000),"unshifted root encoder keeps semitone command");
     control(9,false);
     Check(SpinWait.SpinUntil(()=>{lock(frames)return frames[frames.Count-1][9]==124 && frames[frames.Count-1][10]==124;},1000),"Scale sits between Root Note and Scale Mode");
     var pageEncoder=new byte[64];pageEncoder[0]=1;pageEncoder[7]=1;integration.Feed("test-device",pageEncoder);

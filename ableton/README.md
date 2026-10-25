@@ -84,7 +84,7 @@ Use the arrows to choose a parameter, then turn the encoder:
 
 | Page | Encoder action |
 | --- | --- |
-| Root Note | Change the starting note by semitones and update Live's root. |
+| Root Note | Change the starting note by semitones and update Live's root. Hold Shift to move by octaves, keeping the same root and scale. |
 | Scale | Choose Live's scale. |
 | Scale Mode | Turn right for On, left for Off. |
 

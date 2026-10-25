@@ -384,6 +384,10 @@ class SurfaceTests(unittest.TestCase):
         surface._keyboard_mode(127)
         surface._scale_turn(1)
         self.assertEqual(song.root_note, 1)
+        surface._scale_octave(1)
+        self.assertEqual((song.root_note, surface._keyboard.start(song, surface._track)), (1, 49))
+        surface._scale_octave(127)
+        self.assertEqual((song.root_note, surface._keyboard.start(song, surface._track)), (1, 37))
         with patch.object(surface._keyboard, "turn") as turn:
             surface._keyboard_scale_turn(1)
             turn.assert_called_with(song, 1)
