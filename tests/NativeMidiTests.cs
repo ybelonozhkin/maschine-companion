@@ -25,7 +25,11 @@ class NativeMidiTests {
    int previous=reports;tick("MO1 2 0 1 0 ready");Thread.Sleep(30);Check(reports==previous,"NI loss causes no panel clear");
    owner.Granted=true;tick("MO1 2 0 1 0 ready");Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"handoff reacquire redraw drains");
    previous=reports;tick("MO1 2 1 1 0 ready");Thread.Sleep(30);Check(!owner.Wanted && !integration.OwnsController && previous==reports,"Maschine track releases without clearing native panel");
-   tick("MO1 2 0 2 0 ready");Check(!owner.Wanted,"multiple native instances block acquisition");
+   tick("MO1 2 0 2 0 ready");Check(owner.Wanted,"ordinary track can acquire with multiple native instances");
+   owner.Granted=true;tick("MO1 2 0 2 0 ready");Check(integration.OwnsController,"NI grant enables companion with multiple native instances");
+   Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"multi-instance panel output drains");
+   previous=reports;tick("MO1 2 1 2 0 ready");Thread.Sleep(30);Check(!owner.Wanted && !integration.OwnsController && reports==previous,"native track releases for manual instance selection without panel clear");
+   tick("MO1 2 0 2 0 ready");Check(owner.Wanted,"ordinary track requests control again after manual native selection");
    tick("MO1 2 0 1 1 ready");Check(!owner.Wanted,"uncertain device identity blocks acquisition");
    tick("MO1 1 0 1 0 ready");Check(!owner.Wanted,"wrong track epoch blocks acquisition");
    tick("MO1 2 0 1 0 ready");owner.Granted=true;loseDuringWrite=true;previous=reports;tick("MO1 2 0 1 0 ready");

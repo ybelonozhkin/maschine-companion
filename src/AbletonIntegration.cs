@@ -68,7 +68,7 @@ sealed class AbletonIntegration : IDisposable {
  readonly long[] flashUntil=new long[128];
  readonly long[] playbackFlashUntil=new long[128];long feedbackEpoch=-1;bool feedbackSeen;
  readonly object panelGate=new object();byte[] pending;string pendingPath;string pendingLabel;Task panelTask;bool owned;long panelGeneration;readonly PanelOutput panelOutput=new PanelOutput();
- public string Status {get{return error.Length>0?"Ableton unavailable: "+error:modeChanged?"Paused after MIDI mode: return to native, then Resume":!midi.Ready?"Waiting for MIDI port":ni!=null && !InputAllowed?(niOwner==null || clock.ElapsedMilliseconds-niOwnerAt>=1000?"Waiting for controller ownership state":niOwner.Count>1?"Paused: multiple Maschine instances":niOwner.Uncertain?"Paused: unknown device identity":ni.Status):!active?"Waiting for Ableton control surface":"Ableton: notes + transport";}}
+ public string Status {get{return error.Length>0?"Ableton unavailable: "+error:modeChanged?"Paused after MIDI mode: return to native, then Resume":!midi.Ready?"Waiting for MIDI port":ni!=null && !InputAllowed?(niOwner==null || clock.ElapsedMilliseconds-niOwnerAt>=1000?"Waiting for controller ownership state":niOwner.Uncertain?"Paused: unknown device identity":niOwner.Selected?(niOwner.Count>1?"Maschine selected: choose its Controller manually":"Maschine VST selected"):ni.Status):!active?"Waiting for Ableton control surface":"Ableton: notes + transport";}}
  public int FixedVelocity {get{return input.FixedValue;}set{if(value<1 || value>127)throw new ArgumentOutOfRangeException("FixedVelocity");input.FixedValue=value;}}
  public bool IsWriting {get{return !PanelIdle || ni!=null && ni.Busy;}}
  public bool OwnsController {get{return InputAllowed && !modeChanged;}}
@@ -486,7 +486,7 @@ sealed class AbletonIntegration : IDisposable {
 
 sealed class NiOwnerState {
  public long Epoch;public bool Selected,Uncertain;public int Count;
- public bool CompanionRequested {get{return !Uncertain && Count<=1 && !Selected;}}
+ public bool CompanionRequested {get{return !Uncertain && !Selected;}}
  public static bool TryParse(string[] fields,out NiOwnerState state){
   state=null;long epoch;int selected,count,uncertain;
   if(fields.Length!=6 || fields[0]!="MO1" || fields[5]!="ready" || !long.TryParse(fields[1],out epoch) || epoch<0 || !int.TryParse(fields[2],out selected) || selected<0 || selected>1 || !int.TryParse(fields[3],out count) || count<0 || count>512 || selected>count || !int.TryParse(fields[4],out uncertain) || uncertain<0 || uncertain>1)return false;

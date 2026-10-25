@@ -15,15 +15,18 @@ Choose **Pause** in the tray before loading Maschine as a plug-in or giving the 
 ### Experimental automatic handoff
 
 Set `EnableNativeHandoff=true` in `companion.ini`, then restart the companion.
-With one Maschine VST in the Set, selecting its track gives it the Mikro;
-selecting another track requests control for the companion. NI's
-Host Integration Agent must be installed and running.
+Selecting a track containing Maschine releases the Mikro to NI; selecting an
+ordinary track requests control for the companion. NI's Host Integration Agent
+must be installed and running.
 Maschine may redraw its screen on the first pad press after returning.
 
-This option supports one Mikro and one Maschine instance. Multiple instances,
-unknown device identity or missing script state pause the integration. If the
-NI connection fails, use **Resume** to retry. Leave the option disabled to use
-manual Pause/Resume.
+With several Maschine instances, select the Mikro manually in the desired
+instance's **Controller** menu. Selecting a Live track does not choose that
+Maschine instance; NI may restore a previously used instance.
+
+This option supports one Mikro. Unknown device identity or missing script state
+pause the integration. If the NI connection fails, use **Resume** to retry.
+Leave the option disabled to use manual Pause/Resume.
 
 ## Display and lighting
 

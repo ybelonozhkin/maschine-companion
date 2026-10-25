@@ -6,7 +6,7 @@ All notable changes are documented here, using [Keep a Changelog](https://keepac
 
 ### Added
 
-- Experimental automatic controller handoff between the Live integration and one Maschine VST instance, enabled with `EnableNativeHandoff`.
+- Experimental controller handoff between the Live integration and Maschine VSTs, enabled with `EnableNativeHandoff`. Select between multiple Maschine instances manually in their Controller menus.
 
 ## [0.3.0] - 2026-10-24
 
