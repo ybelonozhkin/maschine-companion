@@ -2,17 +2,17 @@
 
 All notable changes are documented here, using [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-10-25
+
+### Added
+
+- Experimental controller handoff between the Live integration and Maschine VSTs, enabled with `EnableNativeHandoff`. Select between multiple Maschine instances manually in their Controller menus.
+- Duplicate and Erase for the selected Session clip in Pattern; Shift + pad 9 (Clear) deletes selected notes in Events.
+- Shift + encoder on Keyboard's Root Note page moves the pad range by octaves while preserving the root and scale.
 
 ### Fixed
 
 - Held notes are no longer cut short when recording starts after the count-in with Note Repeat and Arp off.
-
-### Added
-
-- Duplicate and Erase for the selected Session clip in Pattern; Shift + pad 9 (Clear) deletes selected notes in Events.
-- Shift + encoder on Keyboard's Root Note page moves the pad range by octaves while preserving the root and scale.
-- Experimental controller handoff between the Live integration and Maschine VSTs, enabled with `EnableNativeHandoff`. Select between multiple Maschine instances manually in their Controller menus.
 
 ## [0.3.0] - 2026-10-24
 

@@ -8,7 +8,7 @@ Extract the entire folder to a writable location before starting the app. Keep `
 
 - Windows 11 x64 and Maschine Mikro MK3. Other controllers and macOS are not supported by this build.
 - The NI controller driver. The default launcher configuration expects Maschine 3 at its usual installation path; edit `Executable` in `companion.ini` if yours is elsewhere.
-- For Live integration: Ableton Live 12, Windows 11 25H2 or later, and Windows MIDI Services with loopback support. See Microsoft's [MIDI Services setup](https://microsoft.github.io/MIDI/) and [system requirements](https://microsoft.github.io/MIDI/kb/minimum-requirements/). Tested on Live 12.4.6 Standard; other setups need compatibility testing.
+- For Live integration: Ableton Live 12, Windows 11 25H2 or later, and Windows MIDI Services with loopback support. See Microsoft's [MIDI Services setup](https://microsoft.github.io/MIDI/) and [system requirements](https://microsoft.github.io/MIDI/kb/minimum-requirements/). Tested on Live 12.4.6 and 12.4.7 Standard; other setups need compatibility testing.
 - The latest Microsoft Visual C++ v14 Redistributable, x64: [Microsoft download](https://aka.ms/vc14/vc_redist.x64.exe). Install or update it before using the Live integration. An older runtime may cause missing-DLL or entry-point errors. See [Microsoft's runtime requirements](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist).
 
 Build tools and Python are not required to run this download. Put Mikro in native mode; if it is in MIDI mode, use Shift + Maschine to switch back.
@@ -52,7 +52,11 @@ The input named **Maschine Mikro MK3** belongs to NI's MIDI mode. Use **Mikro Co
 
 The [controls guide](ableton/README.md) covers playing, recording, sequencing and browsing. Arp Rhythm and track navigation are beta features.
 
-Choose Pause in the tray before loading Maschine as a plug-in. Resume after releasing the controller from Maschine.
+Choose Pause in the tray before loading Maschine as a plug-in. Alternatively,
+opt into [experimental automatic handoff](ableton/README.md#experimental-automatic-handoff)
+with `EnableNativeHandoff=true`, then restart the companion. This requires NI's
+Host Integration Agent. Multiple Maschine instances use manual Controller-menu
+selection inside Maschine.
 
 ## Update or remove
 

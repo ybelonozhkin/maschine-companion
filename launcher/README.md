@@ -32,7 +32,8 @@ By default, a running DAW pauses the launcher. Closing the DAW restores standby 
 
 Windows lock and sleep also pause controller actions. The companion checks its state again after unlock or wake. Real sleep and hibernate recovery still need hardware testing.
 
-Before loading Maschine as a plug-in, choose **Pause** manually. Choose **Resume** after releasing the controller from Maschine.
+Before loading Maschine as a plug-in, choose **Pause** manually, or enable the
+Live integration's [experimental automatic handoff](../ableton/README.md#experimental-automatic-handoff).
 
 ## Troubleshooting
 
