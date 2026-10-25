@@ -42,7 +42,9 @@ sealed class NativeMidi : IDisposable {
  public void SceneToggle(){Send(0xb0,74,127);Send(0xb0,74,0);}
  public void PatternTurn(int delta,bool horizontal=false){for(int i=0;i<Math.Abs(delta);i++)Send(0xb0,horizontal?73:72,delta>0?1:127);}
  public void Transport(MikroTransport command){if(command==MikroTransport.GridFeedback || command==MikroTransport.FixedVelocity || command==MikroTransport.SixteenVelocity)return;int cc=command==MikroTransport.Play?20:command==MikroTransport.Stop?21:command==MikroTransport.Record?22:command==MikroTransport.TapTempo?25:command==MikroTransport.Metronome?26:command==MikroTransport.Follow?27:command==MikroTransport.Mute?29:command==MikroTransport.Solo?30:command==MikroTransport.PadMode?31:command==MikroTransport.KeyboardMode?32:command==MikroTransport.Events?39:command==MikroTransport.Restart?45:command==MikroTransport.Loop?46:command==MikroTransport.Erase?47:command==MikroTransport.Volume?48:command==MikroTransport.Tempo?54:command==MikroTransport.Browse?57:command==MikroTransport.Step?61:command==MikroTransport.Duplicate?63:command==MikroTransport.Plugin?80:34;Send(0xb0,cc,127);Send(0xb0,cc,0);}
- public void DeviceTurn(int delta,bool fine){for(int i=0;i<Math.Abs(delta);i++)Send(0xb0,fine?84:83,delta>0?1:127);}
+ public void DeviceTurn(int delta,bool fast){for(int i=0;i<Math.Abs(delta);i++)Send(0xb0,fast?84:83,delta>0?1:127);}
+ public void DeviceReset(){Send(0xb0,93,127);Send(0xb0,93,0);}
+ public void DeviceStrip(int position){if(position<0 || position>127)throw new ArgumentOutOfRangeException("position");Send(0xb0,94,position);}
  public void DeviceNavigate(int direction,bool device){Send(0xb0,device?82:81,direction>0?1:127);}
  public void DeviceClose(){Send(0xb0,85,127);Send(0xb0,85,0);}
  public void NavigationToggle(){Send(0xb0,86,127);Send(0xb0,86,0);}
@@ -68,12 +70,10 @@ sealed class NativeMidi : IDisposable {
  public void EventTurn(int delta,bool extend){for(int i=0;i<Math.Abs(delta);i++)Send(0xb0,extend?42:41,delta>0?1:127);}
  public void Edit(int command){Send(0xb0,37,command);}
  public void Modifier(bool shift){Send(0xb0,38,shift?127:0);}
- public void RootTurn(int delta){for(int i=0;i<Math.Abs(delta);i++)Send(0xb0,35,delta>0?1:127);}
  public void ScaleTurn(int delta){for(int i=0;i<Math.Abs(delta);i++)Send(0xb0,33,delta>0?1:127);}
  public void OctaveTurn(int delta){for(int i=0;i<Math.Abs(delta);i++)Send(0xb0,91,delta>0?1:127);}
  public void PatternEdit(bool duplicate){Send(0xb0,92,duplicate?1:2);}
  public void SelectNote(int note){Send(0xb0,28,note);}
- public void KeyboardRange(int direction){int cc=direction<0?43:44;Send(0xb0,cc,127);Send(0xb0,cc,0);}
  public void Bank(int direction){int cc=direction==0?36:direction<0?23:24;Send(0xb0,cc,127);Send(0xb0,cc,0);}
  public void ReleaseAll(){Exception error=null;for(int i=0;i<128;i++)if(notes[i])try{Note(i,0,false);}catch(Exception ex){error=ex;}try{ResetExpression();}catch(Exception ex){error=ex;}if(error!=null)throw error;}
  public void Dispose(){try{if(Ready)ReleaseAll();}finally{if(output!=IntPtr.Zero){midiOutClose(output);output=IntPtr.Zero;}if(created){int result=MC_Close();if(result!=0)throw new Exception("Windows MIDI port cleanup error="+result);created=false;}}}

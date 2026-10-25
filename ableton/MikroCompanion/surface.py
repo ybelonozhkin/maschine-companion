@@ -185,8 +185,12 @@ class MikroCompanion(ControlSurface):
                 button.add_value_listener(action)
                 setattr(self, "_encoder_control_{}".format(cc), button)
 
-        self._pattern_edit = ButtonElement(False, MIDI_CC_TYPE, 0, 92)
-        self._pattern_edit.add_value_listener(lambda value: self._pattern_action('duplicate' if value == 1 else 'erase') if value in (1, 2) else None)
+            self._pattern_edit = ButtonElement(False, MIDI_CC_TYPE, 0, 92)
+            self._pattern_edit.add_value_listener(lambda value: self._pattern_action('duplicate' if value == 1 else 'erase') if value in (1, 2) else None)
+            self._device_reset = ButtonElement(True, MIDI_CC_TYPE, 0, 93)
+            self._device_reset.add_value_listener(lambda value: self._device_action("reset") if value else None)
+            self._device_strip = ButtonElement(False, MIDI_CC_TYPE, 0, 94)
+            self._device_strip.add_value_listener(lambda value: self._device_action("strip", value))
 
         self.log_message("Mikro Companion loaded; 16-pad banking, view-based recording")
 
@@ -987,9 +991,10 @@ class MikroCompanion(ControlSurface):
                 notes = normal and getattr(self._track, "has_midi_input", True)
                 packet = "MN1 {} {} {} ready".format(self._feedback_epoch, int(notes), int(normal))
                 self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
-                state = "MC7 {} {} {} {} {} {} {} {} {} {} {} {} ready".format(
+                state = "MC8 {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} ready".format(
                     mask, int(song.is_playing), int(self._recording_active()), color, base, self._feedback_epoch, int(song.metronome), int(song.view.follow_song),
-                    self._selected_note(), int(getattr(mix, "mute", False)) if mix is not None else 0, int(getattr(mix, "solo", False)) if mix is not None else 0, int(mix is not None)
+                    self._selected_note(), int(getattr(mix, "mute", False)) if mix is not None else 0, int(getattr(mix, "solo", False)) if mix is not None else 0, int(mix is not None),
+                    int(native), instances, int(uncertain)
                 )
                 if hasattr(self._track, "name"):
                     name = ''.join(c for c in self._track.name if c.isprintable())[:64] or 'Track'
@@ -1037,8 +1042,16 @@ class MikroCompanion(ControlSurface):
             self._layout_dirty = True
 
     def disconnect(self):
-        self._pattern.close()
-        self._clip_activity.disconnect()
-        self._remove_listeners()
-        self._socket.close()
-        super(MikroCompanion, self).disconnect()
+        try:
+            self._pattern.close()
+        finally:
+            try:
+                self._clip_activity.disconnect()
+            finally:
+                try:
+                    self._remove_listeners()
+                finally:
+                    try:
+                        self._socket.close()
+                    finally:
+                        super(MikroCompanion, self).disconnect()

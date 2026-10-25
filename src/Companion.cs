@@ -97,6 +97,12 @@ class Settings {
   }
   return rules.ToArray();
  }
+ public static string RestartRequired(Settings current,Settings next) {
+  if(current.EnableAbleton!=next.EnableAbleton)return "EnableAbleton";
+  if(current.EnableNativeHandoff!=next.EnableNativeHandoff)return "EnableNativeHandoff";
+  if(current.MidiActivityInputs!=next.MidiActivityInputs)return "MidiActivityInputs";
+  return null;
+ }
  public static Settings Load(string path) {
   var s=new Settings();var values=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
   foreach(string raw in File.ReadAllLines(path)) {string line=raw.Trim();if(line.Length==0 || line.StartsWith("#"))continue;int eq=line.IndexOf('=');if(eq<=0)throw new Exception("Invalid config line: "+line);values[line.Substring(0,eq).Trim()]=line.Substring(eq+1).Trim();}
@@ -326,7 +332,7 @@ class Companion : Form {
   if(next==status)return;status=next;statusItem.Text=next;tray.Text=next.Length>63?next.Substring(0,63):next;tray.Icon=runningNow?System.Drawing.SystemIcons.Information:System.Drawing.SystemIcons.Application;Log("status: "+next+(blockDetails.Length>0?"; "+blockDetails:""));
  }
  protected override void SetVisibleCore(bool value){base.SetVisibleCore(false);}
- void Reload(){try{var next=Settings.Load(Path.Combine(root,"companion.ini"));if(settings.StandbyLed && !next.StandbyLed)foreach(var c in controllers.Values)if(c.LedSet && !LedOutputBlocked()){StandbyLight.Set(c.Path,0);c.LedSet=false;}if(next.EnableAbleton!=settings.EnableAbleton)throw new Exception("Restart the companion after changing EnableAbleton");settings=next;dimItem.Checked=settings.DisplayDim;if(ableton!=null)ableton.FixedVelocity=settings.FixedVelocity;lastProcessCheck=-1000;foreach(var c in controllers.Values){c.Hold.CancelUntilRelease();c.Action=0;c.LedAttempted=false;c.Vegas.Ready(false,clock.ElapsedMilliseconds);}Log("config reloaded");}catch(Exception ex){Log("config error: "+ex.Message);tray.ShowBalloonTip(5000,"Config error",ex.Message,ToolTipIcon.Error);}}
+ void Reload(){try{var next=Settings.Load(Path.Combine(root,"companion.ini"));string restart=Settings.RestartRequired(settings,next);if(restart!=null)throw new Exception("Restart the companion after changing "+restart);if(settings.StandbyLed && !next.StandbyLed)foreach(var c in controllers.Values)if(c.LedSet && !LedOutputBlocked()){StandbyLight.Set(c.Path,0);c.LedSet=false;}settings=next;dimItem.Checked=settings.DisplayDim;if(ableton!=null)ableton.FixedVelocity=settings.FixedVelocity;lastProcessCheck=-1000;foreach(var c in controllers.Values){c.Hold.CancelUntilRelease();c.Action=0;c.LedAttempted=false;c.Vegas.Ready(false,clock.ElapsedMilliseconds);}Log("config reloaded");}catch(Exception ex){Log("config error: "+ex.Message);tray.ShowBalloonTip(5000,"Config error",ex.Message,ToolTipIcon.Error);}}
  void Scan() {
   uint count=0,size=(uint)Marshal.SizeOf(typeof(Device));if(GetRawInputDeviceList(null,ref count,size)==uint.MaxValue){Log("Raw Input enumeration failed");return;}
   Device[] devices=new Device[count];if(GetRawInputDeviceList(devices,ref count,size)==uint.MaxValue)return;
@@ -554,6 +560,9 @@ static class Tests {
    Check(DeviceState.TryParse("MDEV1 1 1 1 0 1 1 0 RmlsdGVy Q3V0b2Zm Mi40MCBrSHo= ready".Split(' '),out device) && device.Name=="Filter" && device.Value=="2.40 kHz" && device.Previous && !device.Next,"device feedback parses formatted labels and separate navigation");
    Check(!DeviceState.TryParse("MDEV1 1 0 1 0 1 1 0 - - - ready".Split(' '),out device),"unavailable device cannot be enabled");
    Check(!DeviceState.TryParse("MDEV1 1 1 1 0 1 1 0 !!! - - ready".Split(' '),out device),"malformed device label is rejected");
+   Check(DeviceState.TryParse("MDEV2 1 1 1 0 1 1 0 - - - 0 ready".Split(' '),out device) && device.Position==0,"device minimum strip position is available");
+   Check(DeviceState.TryParse("MDEV2 1 1 1 0 1 1 0 - - - 127 ready".Split(' '),out device) && device.Position==127,"device maximum strip position parses");
+   Check(!DeviceState.TryParse("MDEV2 1 1 1 0 1 1 0 - - - 128 ready".Split(' '),out device),"out of range device strip state rejected");
    NavigationState navigation;
    Check(NavigationState.TryParse("MNAV1 2 1 1 VmVyc2U= ready".Split(' '),out navigation) && navigation.Page==1 && navigation.Label=="Verse","navigation feedback parses page and label");
    Check(!NavigationState.TryParse("MNAV1 2 1 2 VmVyc2U= ready".Split(' '),out navigation),"navigation rejects invalid pages");
@@ -674,6 +683,12 @@ static class Tests {
   Check(!WindowClose.Select(targets,new IntPtr(22),true,out selectedWindow,out selectedPid),"blocked active instance does not fall back to another");
   Check(!WindowClose.Select(new List<WindowClose.Candidate>{targets[0]},new IntPtr(33),true,out selectedWindow,out selectedPid),"target child window does not close background main window");
   Check(!WindowClose.Select(targets,new IntPtr(99),false,out selectedWindow,out selectedPid),"blocked second instance still makes background selection ambiguous");
+  var originalSettings=new Settings();var changedSettings=new Settings();
+  Check(Settings.RestartRequired(originalSettings,changedSettings)==null,"unchanged connection settings reload");
+  changedSettings.EnableNativeHandoff=true;Check(Settings.RestartRequired(originalSettings,changedSettings)=="EnableNativeHandoff","handoff change requires restart before applying config");
+  changedSettings.EnableNativeHandoff=false;changedSettings.MidiActivityInputs="Other input";Check(Settings.RestartRequired(originalSettings,changedSettings)=="MidiActivityInputs","activity input change requires restart");
+  changedSettings.MidiActivityInputs="";changedSettings.EnableAbleton=true;Check(Settings.RestartRequired(originalSettings,changedSettings)=="EnableAbleton","integration change requires restart");
+  changedSettings.EnableAbleton=false;changedSettings.FixedVelocity=80;changedSettings.DisplayDim=true;Check(Settings.RestartRequired(originalSettings,changedSettings)==null,"velocity and dim remain reloadable");
   Check(new Settings().StandbyBrightnessValue==0x7c,"default Dim");Check(Settings.BrightnessValue("normal")==0x7e,"Normal brightness");Check(Settings.BrightnessValue("Bright")==0x7f,"Bright brightness");
   bool invalidBrightness=false;try{Settings.BrightnessValue("100");}catch{invalidBrightness=true;}Check(invalidBrightness,"reject invalid brightness");
   Check(Processes.MatchesDaw("Ableton Live 12 Standard","Ableton Live*"),"Ableton prefix");Check(!Processes.MatchesDaw("Ableton Plugin Scanner","Ableton Live*"),"exclude helper");Check(Processes.MatchesDaw("REAPER","reaper"),"case-insensitive exact DAW");

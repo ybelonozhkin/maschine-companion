@@ -14,14 +14,16 @@ using System.Drawing.Text;
 
 sealed class AbletonIntegration : IDisposable {
  readonly INiOwnership ni;
- NiOwnerState niOwner;long niOwnerAt=-10000;
+ volatile bool disposed;
+ NiOwnerState niOwner;long niOwnerAt=-10000;bool bundledOwnership;
  bool LeaseAllowed {get{return ni==null || ni.Granted;}}
- bool InputAllowed {get{return active && LeaseAllowed;}}
+ bool InputAllowed {get{return !disposed && active && LeaseAllowed;}}
  bool PanelIdle {get{lock(panelGate)return panelTask==null || panelTask.IsCompleted;}}
  NavigationState navigationState;
  bool NavigationMode {get{return navigationState!=null && navigationState.Epoch==feedbackEpoch && navigationState.Enabled;}}
  DeviceState deviceState;long deviceTitleUntil;
  bool DeviceMode {get{return !NavigationMode && deviceState!=null && deviceState.Epoch==feedbackEpoch && deviceState.Enabled;}}
+ bool DeviceStripMode {get{return DeviceMode && !GridMode && !StepPreview && !input.Group && deviceState.Position>=0;}}
  long gridEpoch=-1,noteTargetEpoch=-1;bool gridAvailable,gridHeld,targetNotes=true,targetMute=true;string gridText="1/16";
  bool GridMode {get{return gridHeld && gridEpoch==feedbackEpoch && gridAvailable;}}
  bool NotesAvailable {get{return noteTargetEpoch!=feedbackEpoch || targetNotes;}}
@@ -107,7 +109,7 @@ sealed class AbletonIntegration : IDisposable {
   input.StepPad+=position=>{if(active && StepMode)midi.StepPad(position);};
   input.PatternPad+=value=>{if(midi.Ready && (active || value>=16))midi.PatternPad(value);};
   input.SelectEvent+=pitch=>{if(active)midi.SelectEvent(pitch);};
-  input.Strip+=value=>{if(ExpressionAvailable){if(stripMode==1){stripPosition=value;midi.PitchBend(StripPitch(value));}else if(stripMode==2 && value>0){modPosition=value;midi.Modulation((value-1)*127/199);}}};
+  input.Strip+=value=>{if(DeviceMode){if(DeviceStripMode && value>0 && value<=200){deviceTitleUntil=0;midi.DeviceStrip((value-1)*127/199);}return;}if(ExpressionAvailable){if(stripMode==1){stripPosition=value;midi.PitchBend(StripPitch(value));}else if(stripMode==2 && value>0){modPosition=value;midi.Modulation((value-1)*127/199);}}};
   input.Encoder+=delta=>TurnEncoder(delta,false);
   input.RootEncoder+=delta=>TurnEncoder(delta,true);
   input.Bank+=Navigate;
@@ -157,6 +159,7 @@ sealed class AbletonIntegration : IDisposable {
   if(command==MikroTransport.ViewToggle){midi.ViewToggle();return;}
   if(command==MikroTransport.Navigate){midi.NavigationToggle();return;}
   if(command==MikroTransport.ScaleToggle && NavigationMode)return;
+  if(command==MikroTransport.ScaleToggle && DeviceMode && !GridMode && !StepPreview && !input.Group){deviceTitleUntil=0;midi.DeviceReset();return;}
   if(ArpMode){
    if(command==MikroTransport.KeyboardMode)arpView=false;
    if(command==MikroTransport.PadMode || command==MikroTransport.Step || command==MikroTransport.Events || command==MikroTransport.Browse || command==MikroTransport.Pattern || command==MikroTransport.Scene){input.CancelHeldNotes();ResetRepeat();}
@@ -164,7 +167,7 @@ sealed class AbletonIntegration : IDisposable {
   if(command==MikroTransport.Pattern || command==MikroTransport.Scene){ResetRepeat();input.ReleaseAll();midi.ResetExpression();if(command==MikroTransport.Scene)midi.SceneToggle();else midi.PatternToggle();return;}
   if(PatternMode && (command==MikroTransport.ScaleToggle || command==MikroTransport.FixedVelocity || command==MikroTransport.SixteenVelocity))return;
   if(command==MikroTransport.Favorites){if(BrowserMode)midi.BrowserFavorite();return;}
-  if(command==MikroTransport.Pitch || command==MikroTransport.Mod){if(ExpressionAvailable){midi.ResetExpression();stripPosition=modPosition=0;int selected=command==MikroTransport.Pitch?1:2;stripMode=stripMode==selected?0:selected;}return;}
+  if(command==MikroTransport.Pitch || command==MikroTransport.Mod){if(ExpressionAvailable && !DeviceMode){midi.ResetExpression();stripPosition=modPosition=0;int selected=command==MikroTransport.Pitch?1:2;stripMode=stripMode==selected?0:selected;}return;}
   if(PatternMode && !SceneMode && (command==MikroTransport.Duplicate || command==MikroTransport.Erase)){
    bool duplicate=command==MikroTransport.Duplicate;
    if(clipEditEpoch==feedbackEpoch && (duplicate?clipDuplicate:clipErase))midi.PatternEdit(duplicate);
@@ -198,11 +201,12 @@ sealed class AbletonIntegration : IDisposable {
  }
  static readonly string[] NativeProcessNames={"Maschine 3","Maschine3","Maschine 2","Maschine2","Controller Editor","Komplete Kontrol"};
  public void Tick(string controllerPath,bool hostRunning,bool blocked){
+  if(disposed)return;
   host=hostRunning;if(!hostRunning){startupShown=false;startupUntil=0;}
   if(controllerPath==null || path!=null && path!=controllerPath)startupShown=false;
   int packets=0;while(socket.Available>0 && packets++<32){IPEndPoint sender=null;byte[] data=socket.Receive(ref sender);if(data.Length>512)continue;
    int newMask,p,r,metro=0,following=0,selected=-1,mute=0,soloed=0,mix=0,color=11,baseNote=36;long epoch=0;string[] fields=Encoding.ASCII.GetString(data).Split(' ');
-   if(fields[0]=="MO1"){NiOwnerState parsed;if(NiOwnerState.TryParse(fields,out parsed)){niOwner=parsed;niOwnerAt=clock.ElapsedMilliseconds;}continue;}
+   if(fields[0]=="MO1"){NiOwnerState parsed;if(!bundledOwnership && NiOwnerState.TryParse(fields,out parsed)){niOwner=parsed;niOwnerAt=clock.ElapsedMilliseconds;}continue;}
    if(fields.Length==5 && fields[0]=="MPC1" && fields[4]=="ready"){
     long source;int duplicate,erase;
     if(long.TryParse(fields[1],out source) && source>=0 && int.TryParse(fields[2],out duplicate) && (duplicate==0||duplicate==1) && int.TryParse(fields[3],out erase) && (erase==0||erase==1)){clipEditEpoch=source;clipDuplicate=duplicate!=0;clipErase=erase!=0;}continue;
@@ -251,7 +255,7 @@ sealed class AbletonIntegration : IDisposable {
     }continue;
    }
    if(fields[0]=="MNAV1"){NavigationState parsed;if(NavigationState.TryParse(fields,out parsed))navigationState=parsed;continue;}
-   if(fields[0]=="MDEV1"){
+   if(fields[0]=="MDEV1" || fields[0]=="MDEV2"){
     DeviceState parsed;if(DeviceState.TryParse(fields,out parsed)){
      if(parsed.Enabled && (!DeviceMode || deviceState.Name!=parsed.Name))deviceTitleUntil=clock.ElapsedMilliseconds+900;
      deviceState=parsed;
@@ -277,18 +281,22 @@ sealed class AbletonIntegration : IDisposable {
     if(active && host && !blocked && activityEpoch==feedbackEpoch){Latch(playbackFlashUntil,activityNote);if(!feedbackSeen){feedbackSeen=true;log("Ableton pad activity received");}}
     continue;
    }
-   bool modern=(fields.Length==6 && fields[0]=="MC2") || (fields.Length==7 && fields[0]=="MC3") || (fields.Length==8 && fields[0]=="MC4") || (fields.Length==9 && fields[0]=="MC5") || (fields.Length==10 && fields[0]=="MC6") || (fields.Length==14 && fields[0]=="MC7");
+   bool bundled=fields.Length==17 && fields[0]=="MC8";
+   NiOwnerState bundledOwner=null;
+   bool ownerValid=!bundled || NiOwnerState.TryParse(new[]{"MO1",fields[6],fields[13],fields[14],fields[15],"ready"},out bundledOwner);
+   bool modern=(fields.Length==6 && fields[0]=="MC2") || (fields.Length==7 && fields[0]=="MC3") || (fields.Length==8 && fields[0]=="MC4") || (fields.Length==9 && fields[0]=="MC5") || (fields.Length==10 && fields[0]=="MC6") || (fields.Length==14 && fields[0]=="MC7") || bundled;
    bool format=(fields.Length==5 && fields[0]=="MC1") || (modern && int.TryParse(fields[4],out color) && color>=1 && color<=17
     && (fields.Length<7 || int.TryParse(fields[5],out baseNote) && baseNote>=0 && baseNote<=112)
     && (fields.Length<8 || long.TryParse(fields[6],out epoch) && epoch>=0)
     && (fields.Length<9 || int.TryParse(fields[7],out metro) && (metro==0||metro==1))
     && (fields.Length<10 || int.TryParse(fields[8],out following) && (following==0||following==1))
-    && (fields.Length<14 || int.TryParse(fields[9],out selected) && selected>=-1 && selected<=127
+    && ownerValid && (fields.Length<14 || int.TryParse(fields[9],out selected) && selected>=-1 && selected<=127
      && int.TryParse(fields[10],out mute) && (mute==0||mute==1) && int.TryParse(fields[11],out soloed) && (soloed==0||soloed==1)
      && int.TryParse(fields[12],out mix) && (mix==0||mix==1)));
    if(format && int.TryParse(fields[1],out newMask) && newMask>=0 && newMask<=65535 && int.TryParse(fields[2],out p) && int.TryParse(fields[3],out r) && (p==0||p==1) && (r==0||r==1) && fields[fields.Length-1]=="ready"){
     if(feedbackEpoch!=epoch){input.CancelHeldNotes();ResetRepeat();repeatClockAt=-10000;stripPosition=modPosition=0;input.KeyboardNotes=null;input.ReleaseAll();midi.ReleaseAll();input.Sixteen=false;pendingSelected=-1;selectionUntil=0;Array.Clear(flashUntil,0,flashUntil.Length);ClearPlayback();}
     if(playing && p==0)ClearPlayback();feedbackEpoch=epoch;
+    if(bundled){bundledOwnership=true;niOwner=bundledOwner;niOwnerAt=clock.ElapsedMilliseconds;}
     if(pendingSelected==selected || clock.ElapsedMilliseconds>=selectionUntil){if(input.Sixteen && input.SelectedNote!=selected)input.ReleaseAll();input.SelectedNote=selected;pendingSelected=-1;selectionUntil=0;}
     if(input.SelectedNote<0 && input.Sixteen)input.SetMode(false,false);
     muted=mute!=0;solo=soloed!=0;mixAvailable=mix!=0;
@@ -316,7 +324,7 @@ sealed class AbletonIntegration : IDisposable {
   if(!active || path!=controllerPath){Deactivate(false);path=controllerPath;active=true;lastFrame="";if(startupSplash && !startupShown){startupShown=true;startupUntil=clock.ElapsedMilliseconds+2000;}log("Ableton HID active");}
   externalInputs.Tick(clock.ElapsedMilliseconds);
   if(!RepeatAvailable && RepeatMode){input.CancelHeldNotes();ResetRepeat();}
-  if(!ExpressionAvailable && (stripPosition!=0 || modPosition!=0)){midi.ResetExpression();stripPosition=modPosition=0;}
+  if((!ExpressionAvailable || DeviceMode) && (stripPosition!=0 || modPosition!=0)){midi.ResetExpression();stripPosition=modPosition=0;}
   if(BrowserMode && clock.ElapsedMilliseconds>=browserPollAt){browserPollAt=clock.ElapsedMilliseconds+100;if(browserKeys.Enabled)browserKeys.Post(257);}
   int browserResult;while(browserKeys.TryResult(out browserResult)){if(BrowserMode && browserResult==1)midi.BrowserClose();}
   foreach(int note in externalInputs.Drain())Latch(playbackFlashUntil,note);
@@ -363,8 +371,9 @@ sealed class AbletonIntegration : IDisposable {
    int color=root?(padColor==17?11:17):padColor;
    if(pressed || selected || input.Sixteen || KeyboardMode && !StepPreview || (mask&(1<<index))!=0)frame[40+pad]=(byte)((color<<2)|(input.Sixteen?(pressed?3:index/4):pressed?(selected?3:2):selected?2:0));
   }
-  if(StepMode){for(int i=0;i<25;i++){bool page=i>=steps.StripStart && i<steps.StripEnd;frame[56+i]=(byte)(((page?17:steps.Color)<<2)|(i==steps.Strip?3:page?1:0));}}
-  if(ExpressionAvailable){
+  if(StepMode && !DeviceMode){for(int i=0;i<25;i++){bool page=i>=steps.StripStart && i<steps.StripEnd;frame[56+i]=(byte)(((page?17:steps.Color)<<2)|(i==steps.Strip?3:page?1:0));}}
+  if(DeviceStripMode){int end=(deviceState.Position*24+63)/127;for(int i=0;i<25;i++)frame[56+i]=(byte)(i<=end?71:0);}
+  if(ExpressionAvailable && !DeviceMode){
    frame[11]=(byte)(stripMode==1?127:124);frame[12]=(byte)(stripMode==2?127:124);
    if(stripMode!=0){int position=stripMode==1?(stripPosition==0?12:(stripPosition-1)*24/199):(modPosition==0?0:(modPosition-1)*24/199);int anchor=stripMode==1?12:0;
     for(int i=0;i<25;i++)frame[56+i]=(byte)(i==anchor || i==position?71:i>=Math.Min(anchor,position)&&i<=Math.Max(anchor,position)?70:0);
@@ -470,7 +479,7 @@ sealed class AbletonIntegration : IDisposable {
   }
  }
  public void Pause(bool clear){
-  if(ni!=null)ni.Reset();Deactivate(clear && ni==null);
+  try{if(ni!=null)ni.Reset();}finally{Deactivate(clear && ni==null);}
  }
  void Deactivate(bool clear){
   startupUntil=0;flashTimer.Stop();Array.Clear(editFlash,0,16);
@@ -488,9 +497,21 @@ sealed class AbletonIntegration : IDisposable {
  public void ResetState(){stateAt=niOwnerAt=-10000;int drained=0;while(socket.Available>0 && drained++<256){IPEndPoint sender=null;socket.Receive(ref sender);}}
  public void Resume(){modeChanged=false;ResetState();}
  public void Dispose(){
-  Pause(true);Task task;lock(panelGate){task=panelTask;}if(task!=null)task.Wait(1500);
-  if(ni!=null)ni.Dispose();
-  repeat.Dispose();browserKeys.Dispose();flashTimer.Dispose();socket.Close();midi.Dispose();
+  if(disposed)return;
+  disposed=true;
+  lock(panelGate){panelGeneration++;pending=null;}
+  var errors=new List<Exception>();
+  Action<string,Action> cleanup=(name,action)=>{try{action();}catch(Exception ex){errors.Add(new InvalidOperationException(name+": "+ex.Message,ex));}};
+  cleanup("Pause",()=>Pause(true));
+  cleanup("Panel output",()=>{Task task;lock(panelGate){task=panelTask;}if(task!=null && !task.Wait(1500))throw new TimeoutException("Panel output did not finish");});
+  if(ni!=null)cleanup("NI ownership",ni.Dispose);
+  cleanup("Note Repeat",repeat.Dispose);
+  cleanup("MIDI activity inputs",externalInputs.Dispose);
+  cleanup("Browser",browserKeys.Dispose);
+  cleanup("Flash timer",flashTimer.Dispose);
+  cleanup("UDP socket",socket.Close);
+  cleanup("MIDI port",midi.Dispose);
+  if(errors.Count>0)throw new AggregateException("Ableton cleanup failed: "+string.Join("; ",errors.ConvertAll(error=>error.Message).ToArray()),errors);
  }
 }
 
@@ -516,14 +537,15 @@ sealed class NavigationState {
  }
 }
 sealed class DeviceState {
- public long Epoch;public bool Available,Enabled,Left,Right,Previous,Next;public string Name,Parameter,Value;
+ public long Epoch;public bool Available,Enabled,Left,Right,Previous,Next;public string Name,Parameter,Value;public int Position=-1;
  public static bool TryParse(string[] fields,out DeviceState state){
-  state=null;if(fields.Length!=12 || fields[0]!="MDEV1" || fields[11]!="ready")return false;
+  state=null;bool modern=fields.Length==13 && fields[0]=="MDEV2";if(!(modern || fields.Length==12 && fields[0]=="MDEV1") || fields[fields.Length-1]!="ready")return false;
+  int position=-1;if(modern && (!int.TryParse(fields[11],out position) || position< -1 || position>127))return false;
   long epoch;if(!long.TryParse(fields[1],out epoch) || epoch<0)return false;
   var flags=new int[6];for(int i=0;i<flags.Length;i++)if(!int.TryParse(fields[i+2],out flags[i]) || flags[i]<0 || flags[i]>1)return false;
   if(flags[1]>flags[0])return false;
   var labels=new string[3];try{for(int i=0;i<labels.Length;i++){labels[i]=fields[i+8]=="-"?"":new UTF8Encoding(false,true).GetString(Convert.FromBase64String(fields[i+8]));if(labels[i].Length>80 || labels[i].IndexOfAny(new[]{'\r','\n','\0','\u0001','\u0002','\u0003','\u0004'})>=0)return false;}}catch(FormatException){return false;}catch(DecoderFallbackException){return false;}
-  state=new DeviceState{Epoch=epoch,Available=flags[0]!=0,Enabled=flags[1]!=0,Left=flags[2]!=0,Right=flags[3]!=0,Previous=flags[4]!=0,Next=flags[5]!=0,Name=labels[0],Parameter=labels[1],Value=labels[2]};return true;
+  state=new DeviceState{Epoch=epoch,Available=flags[0]!=0,Enabled=flags[1]!=0,Left=flags[2]!=0,Right=flags[3]!=0,Previous=flags[4]!=0,Next=flags[5]!=0,Name=labels[0],Parameter=labels[1],Value=labels[2],Position=position};return true;
  }
 }
 sealed class PatternState {

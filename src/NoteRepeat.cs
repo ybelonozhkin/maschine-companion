@@ -145,5 +145,8 @@ sealed class NoteRepeat : IDisposable {
   }}catch(Exception error){lock(gate){enabled=false;try{StopVoices();}catch{}}log("Note repeat stopped: "+error.Message);}
   finally{if(timerPeriod){timeEndPeriod(1);timerPeriod=false;}}
  }
- public void Dispose(){lock(gate){Reset();disposed=true;}wake.Set();if(worker!=null)worker.Join();wake.Dispose();}
+ public void Dispose(){
+  lock(gate){if(disposed)return;disposed=true;}
+  try{Reset();}finally{wake.Set();if(worker!=null)worker.Join();wake.Dispose();}
+ }
 }

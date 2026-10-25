@@ -136,26 +136,30 @@ class Sequencer:
         if self.enabled:
             self.page = max(0, min(self.pages() - 1, self.page + direction))
 
-    def hits(self, step):
+    def _step_notes(self):
         start, end = self.bounds()
         if end <= start:
-            return []
-        target = self.page * 16 + step
+            return
         last = max(0, int(math.ceil((end - start) / self.STEP)) - 1)
-        hits = []
+        looping = self.clip is not None and self.clip.looping
         for note in self._notes:
-            if int(note.pitch) != self.pitch or not start <= note.start_time < end:
+            if int(note.pitch) != self.pitch:
+                continue
+            onset = note.start_time
+            if not start <= onset < end:
                 continue
             # Associate a performed note with one nearest grid point, without
             # quantizing the clip. Midpoint ties belong to the later step.
-            index = min(last, int(math.floor((note.start_time - start) / self.STEP + 0.5 + 1e-9)))
-            if self.clip is not None and self.clip.looping:
-                distance = abs(note.start_time - (start + index * self.STEP))
-                if end - note.start_time <= distance + 1e-9:
+            index = min(last, int(math.floor((onset - start) / self.STEP + 0.5 + 1e-9)))
+            if looping:
+                distance = abs(onset - (start + index * self.STEP))
+                if end - onset <= distance + 1e-9:
                     index = 0
-            if index == target:
-                hits.append(note)
-        return hits
+            yield index, note
+
+    def hits(self, step):
+        target = self.page * 16 + step
+        return [note for index, note in self._step_notes() if index == target]
 
     def pad(self, step):
         self.sync()
@@ -213,8 +217,11 @@ class Sequencer:
             for step in range(16):
                 if start + (self.page * 16 + step) * self.STEP < end - 1e-7:
                     valid |= 1 << step
-                if self.enabled and self.hits(step):
-                    occupied |= 1 << step
+            if self.enabled:
+                for index, _ in self._step_notes():
+                    step = index - self.page * 16
+                    if 0 <= step < 16:
+                        occupied |= 1 << step
             strip_start = min(24, int((self.page * 16 * self.STEP) / (end - start) * 25))
             strip_end = min(25, max(strip_start + 1, int(math.ceil(min(end - start, (self.page + 1) * 16 * self.STEP) / (end - start) * 25))))
             if self.enabled and self.clip is not None and self.song.is_playing and self.clip.is_playing:

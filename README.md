@@ -22,7 +22,7 @@ Tested with **Live 12.4.6 and 12.4.7 Standard on Windows 11 x64**. The companion
 | Navigate Arrangement | Shift + Variation; Position and Markers pages. Shift + Scene switches Session / Arrangement views. |
 | Select and edit notes | Events and the editing commands printed on the pads. |
 | Load sounds | Browse; encoder navigates, press to expand or load, Favorites toggles the red Collection. |
-| Adjust devices | Plug-in; arrows select parameters, Shift + arrows select devices. Encoder adjusts values; Shift gives fine control. |
+| Adjust devices | Plug-in; arrows select parameters, Shift + arrows select devices. Encoder adjusts values; Shift makes changes five times faster. Press to reset; the Smart Strip controls the same parameter. |
 | Control playback | Play, Stop, Rec, Restart, Tap and Follow; Shift accesses Loop and Metronome. |
 | Select tracks (beta) | Group + arrows select tracks; Group + Shift + right creates a MIDI track. |
 | Mix the selected track | Mute, Solo and Volume. Volume changes by 0.5 dB, or 0.1 dB with Shift; encoder press resets it to 0 dB. |

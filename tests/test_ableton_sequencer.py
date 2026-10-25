@@ -15,6 +15,25 @@ spec.loader.exec_module(module)
 
 
 class SequencerTests(unittest.TestCase):
+    def test_dense_clip_display_reads_each_note_once(self):
+        reads = []
+        class Note:
+            start_time = 2.01
+            @property
+            def pitch(self):
+                reads.append(1)
+                return 36
+        self.notes = [Note() for _ in range(1024)]
+        for index, note in enumerate(self.notes):
+            note.start_time = 2.01 + (index % 16) * 0.25
+        self.seq.toggle(36)
+        reads.clear()
+        fields = self.seq.packet(3, 1).split()
+        self.assertEqual(int(fields[8]), 65535)
+        self.assertEqual(len(reads), len(self.notes))
+        self.clip.add_new_notes.assert_not_called()
+        self.clip.remove_notes_by_id.assert_not_called()
+
     def test_empty_session_slot_creates_and_fires_only_on_first_step(self):
         self.track.has_midi_input = True
         self.slot = types.SimpleNamespace(canonical_parent=self.track, has_clip=False, clip=None)

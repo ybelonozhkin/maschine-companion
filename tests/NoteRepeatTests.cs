@@ -3,6 +3,16 @@ using System.Collections.Generic;
 
 class NoteRepeatTests {
  static void Check(bool ok,string name){if(!ok)throw new Exception(name);}
+ static void CleanupTests(){
+  bool fail=false;int sends=0;
+  var repeat=new NoteRepeat((n,v,down)=>{sends++;if(fail && !down)throw new InvalidOperationException("injected note release failure");},Console.WriteLine);
+  var thread=(System.Threading.Thread)typeof(NoteRepeat).GetField("worker",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(repeat);
+  repeat.Note(36,100,true);fail=true;
+  bool reported=false;try{repeat.Dispose();}catch(InvalidOperationException){reported=true;}
+  Check(reported && !thread.IsAlive,"failed note release still stops and joins scheduler");
+  int previous=sends;repeat.Note(38,100,true);repeat.Pump();repeat.Dispose();
+  Check(sends==previous,"disposed scheduler cannot emit and disposal is idempotent");
+ }
  static void RhythmTests(){
   var masks=new HashSet<int>();
   int[] original={255,85,17,1,51,119,221,239,73,109,218,182,41,83,39,69};
@@ -234,6 +244,6 @@ class NoteRepeatTests {
    now=.2;repeat.Sync(60,0,true);repeat.Pump();Check(hits.Count==3,"backward seek resets the repeat grid");
    now=.3;repeat.Sync(60,8,true);repeat.Pump();Check(hits.Count==4,"forward seek resets the repeat grid");
   }
-  ArpTests();RhythmTests();Console.WriteLine("PASS note repeat and Arp orders, rhythms, octaves, pressure, gate, releases, clock jitter, tempo, seek and clock loss");return 0;
+  ArpTests();RhythmTests();CleanupTests();Console.WriteLine("PASS note repeat and Arp orders, rhythms, octaves, pressure, gate, releases, clock jitter, tempo, seek, clock loss and failure-safe cleanup");return 0;
  }
 }

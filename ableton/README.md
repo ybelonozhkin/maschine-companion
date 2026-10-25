@@ -198,9 +198,13 @@ Press **Plug-in** to control the selected device on the current track. Press it 
 | **Left / Right** | Select the previous or next parameter. |
 | **Shift + Left / Right** | Select the previous or next device in the chain. |
 | **Encoder** | Change a continuous parameter by 1/127 of its range; a discrete parameter by one choice. |
-| **Shift + encoder** | Adjust continuous parameters ten times more finely; discrete parameters still move by one choice. |
+| **Shift + encoder** | Change parameters five times faster: 5/127 of a continuous range or five discrete choices. |
+| **Encoder press** | Reset the selected parameter to its default, when Live provides one. |
+| **Smart Strip** | Set the selected parameter directly. The LEDs show its position; the left LED stays on at minimum. |
 
 The display shows the parameter name and its value in Live's units. Device names appear briefly when switching devices. Navigation stops at the ends; unassigned directions stay dark. Selecting another device with the mouse also changes the controller's target.
+
+Live exposes defaults for continuous parameters. Encoder press leaves discrete choices and parameters without a default unchanged. Releasing the strip keeps the chosen value. The strip follows parameter changes made with the encoder, mouse or automation.
 
 For third-party plug-ins, expose the controls you want through Live's **Configure** panel. Devices inside a Rack chain can first be selected in Live; Shift + arrows then navigates that chain.
 
