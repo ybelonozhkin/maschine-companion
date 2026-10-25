@@ -662,6 +662,28 @@ class SurfaceTests(unittest.TestCase):
         self.assertFalse(surface._devices.enabled)
         surface.disconnect()
 
+    def test_clear_pad_routes_only_to_events_selection(self):
+        surface, connection = self.make_surface(self.song_with_track())
+        surface._selection.enabled = True
+        surface._selection.can_erase = Mock(return_value=True)
+        surface._selection.erase = Mock()
+        surface._editor.execute = Mock(return_value=False)
+        surface._edit(9)
+        surface._selection.erase.assert_called_once_with()
+        surface._editor.execute.assert_not_called()
+        surface._selection.enabled = False
+        surface._edit(9)
+        self.assertEqual(surface._selection.erase.call_count, 1)
+        surface._editor.execute.assert_called_once_with(9)
+
+    def test_rejected_clip_edit_keeps_pattern_mode(self):
+        surface, connection = self.make_surface(self.song_with_track())
+        surface._pattern.enabled = True
+        surface._pattern.duplicate = Mock(side_effect=RuntimeError('clip cannot be duplicated'))
+        surface._pattern_action('duplicate')
+        self.assertTrue(surface._pattern.enabled)
+        self.assertTrue(any('clip cannot be duplicated' in message for message in surface.messages))
+
     def test_temporary_api_error_retries_without_log_flood(self):
         surface, connection = self.make_surface(self.song_with_track())
         surface._rewire = Mock(side_effect=[TypeError("invalid handle"), TypeError("invalid handle"), None])

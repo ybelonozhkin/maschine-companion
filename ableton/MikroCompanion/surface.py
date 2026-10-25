@@ -185,6 +185,9 @@ class MikroCompanion(ControlSurface):
                 button.add_value_listener(action)
                 setattr(self, "_encoder_control_{}".format(cc), button)
 
+        self._pattern_edit = ButtonElement(False, MIDI_CC_TYPE, 0, 92)
+        self._pattern_edit.add_value_listener(lambda value: self._pattern_action('duplicate' if value == 1 else 'erase') if value in (1, 2) else None)
+
         self.log_message("Mikro Companion loaded; 16-pad banking, view-based recording")
 
     def _create_midi_track(self):
@@ -236,7 +239,8 @@ class MikroCompanion(ControlSurface):
             else:
                 getattr(self._pattern, action)(*args)
         except Exception as error:
-            self._pattern.close()
+            if action not in ('duplicate', 'erase'):
+                self._pattern.close()
             self.log_message("Mikro Companion Pattern unavailable: {}".format(error))
         self._state_dirty = True
         self.update_display()
@@ -411,7 +415,11 @@ class MikroCompanion(ControlSurface):
 
     def _edit(self, command):
         try:
-            changed = self._editor.execute(command)
+            if command == 9 and self._selection.enabled:
+                changed = self._selection.can_erase()
+                self._selection.erase()
+            else:
+                changed = self._editor.execute(command)
             if changed and self._selection.enabled and command in (1, 2, 13, 14, 15, 16):
                 self._selection.edited()
             if command in (1, 2):
@@ -866,6 +874,8 @@ class MikroCompanion(ControlSurface):
                 float(getattr(song, "tempo", 120.0)), float(getattr(song, "current_song_time", 0.0)), int(song.is_playing), sampled)
             self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
             packet = self._pattern.packet(self._feedback_epoch)
+            if self._pattern.enabled:
+                self._socket.sendto(self._pattern.edit_packet(self._feedback_epoch).encode('ascii'), ('127.0.0.1', 39473))
             if packet != self._last_pattern_packet or self._state_dirty or now - self._last_sent >= 0.5:
                 self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
                 self._last_pattern_packet = packet
@@ -949,6 +959,8 @@ class MikroCompanion(ControlSurface):
             if hasattr(self.song(), "can_undo"):
                 try:
                     edit_mask = self._editor.availability(now)
+                    if self._selection.enabled and self._selection.can_erase():
+                        edit_mask |= 1 << 8  # Shift + pad 9: Clear selected notes.
                     history = (bool(self.song().can_undo), bool(self.song().can_redo))
                     if self._editor.shift and history != self._last_history:
                         self.log_message("Mikro Companion history state: undo={}; redo={}".format(*history))

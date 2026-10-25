@@ -10,6 +10,7 @@ All notable changes are documented here, using [Keep a Changelog](https://keepac
 
 ### Added
 
+- Duplicate and Erase for the selected Session clip in Pattern; Shift + pad 9 (Clear) deletes selected notes in Events.
 - Shift + encoder on Keyboard's Root Note page moves the pad range by octaves while preserving the root and scale.
 - Experimental controller handoff between the Live integration and Maschine VSTs, enabled with `EnableNativeHandoff`. Select between multiple Maschine instances manually in their Controller menus.
 

@@ -474,6 +474,11 @@ class NativeMidiTests {
     selectionState=Encoding.ASCII.GetBytes("MV2 21 1 1 3 1 1 ready");sender.Send(selectionState,selectionState.Length,new IPEndPoint(IPAddress.Loopback,39474));integration.Tick("test-device",true,false);
     Check(SpinWait.SpinUntil(()=>{lock(frames)return frames[frames.Count-1][20]==124;},1000),"Erase available only with Events selection");control(19,false);
     Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(47<<8)|(127<<16)));},1000),"Events Erase CC");
+    feedback("ME1 21 256 ready");shifted[4]=2;integration.Feed("test-device",shifted);
+    Check(SpinWait.SpinUntil(()=>{lock(frames)return frames[frames.Count-1][44]==68;},1000),"Events Clear pad 9 lights Dim white with Shift");
+    lock(received)received.Clear();var clearPad=(byte[])r.Clone();clearPad[1]=4;integration.Feed("test-device",clearPad);integration.Feed("test-device",clearPad);
+    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(37<<8)|(9<<16)));},1000),"Shift pad 9 sends Clear command");
+    clearPad[2]=0x30;clearPad[3]=0;integration.Feed("test-device",clearPad);var clearShiftRelease=new byte[64];clearShiftRelease[0]=1;integration.Feed("test-device",clearShiftRelease);
     selectionState=Encoding.ASCII.GetBytes("MV2 21 1 0 0 0 0 ready");sender.Send(selectionState,selectionState.Length,new IPEndPoint(IPAddress.Loopback,39474));
     var menuState=Encoding.ASCII.GetBytes("MK2 21 1 1 0 36 "+major+" TWFqb3I= 0 ready");sender.Send(menuState,menuState.Length,new IPEndPoint(IPAddress.Loopback,39474));integration.Tick("test-device",true,false);
     Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"keyboard menu screen completes");
@@ -577,6 +582,13 @@ class NativeMidiTests {
     control(32,false);Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(70<<8)|(127<<16)));},1000),"Pattern button sends toggle");
     string patternColors="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16";
     var patternState=Encoding.ASCII.GetBytes("MPT1 21 1 0 0 0 1 4096 0 0 6 "+patternColors+" ready");sender.Send(patternState,patternState.Length,new IPEndPoint(IPAddress.Loopback,39474));
+    feedback("MPC1 21 1 1 ready");
+    Check(SpinWait.SpinUntil(()=>{integration.Tick("test-device",true,false);lock(frames)return frames[frames.Count-1][36]==124 && frames[frames.Count-1][20]==124;},1000),"Pattern clip edit buttons light when available");
+    lock(received)received.Clear();control(35,false);control(19,false);
+    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(92<<8)|(1<<16))) && received.Contains((uint)(0xb0|(92<<8)|(2<<16)));},1000),"Pattern Duplicate and Erase address selected clip");
+    feedback("MPC1 21 0 0 ready");
+    Check(SpinWait.SpinUntil(()=>{lock(frames)return frames[frames.Count-1][36]==0 && frames[frames.Count-1][20]==0;},1000),"empty Pattern slot disables clip edit lighting");
+    lock(received)received.Clear();control(35,false);control(19,false);Thread.Sleep(20);Check(Count()==0,"unavailable clip edits produce no commands");
     Check(SpinWait.SpinUntil(()=>{integration.Tick("test-device",true,false);lock(frames){var f=frames[frames.Count-1];return f[33]==127&&f[40]==55&&f[52]==4&&f[9]==0&&f[10]==0;}},1000),"Pattern colors, top-row playing state and grid arrow bounds");
     lock(received)received.Clear();integration.Feed("test-device",r);integration.Feed("test-device",release);
     Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(71<<8)))&&received.Contains((uint)(0xb0|(71<<8)|(16<<16)));},1000),"Pattern pad press and release reach Live");

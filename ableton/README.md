@@ -106,6 +106,8 @@ Turn the encoder to select individual events across those pitches. Hold Shift wh
 
 **Erase** deletes the selected notes. Shift + pads applies the printed editing commands. Press Events again to return to playing. Changing tracks or closing the Clip editor exits Events.
 
+In Events, **Shift + pad 9 (Clear)** also deletes the selected notes. With no notes selected it does nothing.
+
 ## Editing with Shift
 
 Hold Shift in Pad Mode, Keyboard or Step to use the commands printed on the pads. Available commands light dim white and flash when pressed.
@@ -122,7 +124,7 @@ Edits use the MIDI clip open on the selected track. They affect selected notes, 
 
 Quantize moves notes to the straight clip grid; Quantize 50% moves them halfway to it. Nudge moves by half a grid division. Both are unavailable with the grid off. Transpose moves by 1 or 12 semitones, including with Scale Mode on. Each edit is one undo step.
 
-Step Undo/Redo, Clear, Clear Auto, Copy and Paste are unassigned.
+Step Undo/Redo, Clear Auto, Copy and Paste are unassigned. Clear is available in Events only.
 
 ## Volume and tempo
 
@@ -151,6 +153,10 @@ Press **Pattern** for a 4-by-4 Session grid: columns are tracks and rows are sce
 Press a filled pad to launch its clip. An empty pad selects that slot without recording or creating a clip. Hold **Select** to select any slot without launching it and open filled clips in the editor. While Select is held, available empty slots are dim white and the selected slot is bright; missing tracks or scenes stay dark.
 
 Turn the encoder to scroll scenes; **Shift + encoder** scrolls four tracks at a time. This also works while holding Select.
+
+**Duplicate** duplicates the selected clip using Live's Session Duplicate command.
+**Erase** deletes the selected clip. Select a clip with **Select + pad** or with
+the mouse; both buttons are dark for an empty slot.
 
 Hold **Shift** for track Stop: only the bottom four pads are active, one per column. Bright red means playing; dim red means stopped. Press a pad to stop that track's clips, including those outside the visible grid. Release Shift to return to clip launching. Select takes priority if both are held.
 

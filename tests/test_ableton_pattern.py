@@ -8,6 +8,48 @@ PatternGrid = support.surface_module.PatternGrid
 
 
 class PatternTests(unittest.TestCase):
+    def test_duplicate_and_erase_use_highlighted_clip_not_playing_clip(self):
+        grid, song, _ = self.make_grid()
+        track = song.tracks[0]
+        track.duplicate_clip_slot = Mock()
+        for slot in track.clip_slots:
+            slot.delete_clip = Mock()
+        grid.enter()
+        grid.select(8)  # Second scene, first track; another clip may be playing.
+        target = track.clip_slots[1]
+        following = track.clip_slots[2].clip
+        self.assertEqual(grid.edit_packet(4), 'MPC1 4 1 1 ready')
+        grid.duplicate()
+        track.duplicate_clip_slot.assert_called_once_with(1)
+        self.assertIs(track.clip_slots[2].clip, following)
+        grid.erase()
+        target.delete_clip.assert_called_once_with()
+        track.clip_slots[0].delete_clip.assert_not_called()
+        self.assertTrue(grid.enabled)
+
+    def test_edit_guards_empty_wrong_track_scene_mode_and_frozen_track(self):
+        grid, song, _ = self.make_grid()
+        track = song.tracks[0]
+        track.duplicate_clip_slot = Mock()
+        slot = track.clip_slots[0]
+        slot.delete_clip = Mock()
+        grid.enter()
+        grid.select(12)
+        cases = [('has_clip', False, slot), ('is_frozen', True, track),
+                 ('is_group_slot', True, slot), ('scene_mode', True, grid)]
+        for attribute, value, owner in cases:
+            previous = getattr(owner, attribute, False)
+            setattr(owner, attribute, value)
+            self.assertEqual(grid.edit_packet(1), 'MPC1 1 0 0 ready')
+            grid.duplicate()
+            grid.erase()
+            setattr(owner, attribute, previous)
+        song.view.highlighted_clip_slot = song.tracks[1].clip_slots[0]
+        grid.duplicate()
+        grid.erase()
+        track.duplicate_clip_slot.assert_not_called()
+        slot.delete_clip.assert_not_called()
+
     def make_grid(self, tracks=6, scenes=9):
         rows = [LiveNode(color=0x00FF00, is_triggered=False, fire=Mock()) for _ in range(scenes)]
         channels = []

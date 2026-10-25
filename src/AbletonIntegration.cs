@@ -35,6 +35,7 @@ sealed class AbletonIntegration : IDisposable {
  long browserEpoch=-1;bool browserEnabled;
  bool BrowserMode {get{return !NavigationMode && browserEpoch==feedbackEpoch && browserEnabled;}}
  PatternState pattern;
+ long clipEditEpoch=-1;bool clipDuplicate,clipErase;
  bool PatternMode {get{return pattern!=null && pattern.Epoch==feedbackEpoch && pattern.Enabled;}}
  bool SceneMode {get{return PatternMode && pattern.SceneMode;}}
  int stripMode,stripPosition,modPosition;long browserPollAt;
@@ -164,6 +165,11 @@ sealed class AbletonIntegration : IDisposable {
   if(PatternMode && (command==MikroTransport.ScaleToggle || command==MikroTransport.FixedVelocity || command==MikroTransport.SixteenVelocity))return;
   if(command==MikroTransport.Favorites){if(BrowserMode)midi.BrowserFavorite();return;}
   if(command==MikroTransport.Pitch || command==MikroTransport.Mod){if(ExpressionAvailable){midi.ResetExpression();stripPosition=modPosition=0;int selected=command==MikroTransport.Pitch?1:2;stripMode=stripMode==selected?0:selected;}return;}
+  if(PatternMode && !SceneMode && (command==MikroTransport.Duplicate || command==MikroTransport.Erase)){
+   bool duplicate=command==MikroTransport.Duplicate;
+   if(clipEditEpoch==feedbackEpoch && (duplicate?clipDuplicate:clipErase))midi.PatternEdit(duplicate);
+   return;
+  }
   if(command==MikroTransport.Duplicate && !StepMode)return;
   if(command==MikroTransport.ScaleToggle && (GridMode || DeviceMode))return;
   if(command==MikroTransport.ScaleToggle && BrowserMode){midi.BrowserPress(input.Shift);return;}
@@ -197,6 +203,10 @@ sealed class AbletonIntegration : IDisposable {
   int packets=0;while(socket.Available>0 && packets++<32){IPEndPoint sender=null;byte[] data=socket.Receive(ref sender);if(data.Length>512)continue;
    int newMask,p,r,metro=0,following=0,selected=-1,mute=0,soloed=0,mix=0,color=11,baseNote=36;long epoch=0;string[] fields=Encoding.ASCII.GetString(data).Split(' ');
    if(fields[0]=="MO1"){NiOwnerState parsed;if(NiOwnerState.TryParse(fields,out parsed)){niOwner=parsed;niOwnerAt=clock.ElapsedMilliseconds;}continue;}
+   if(fields.Length==5 && fields[0]=="MPC1" && fields[4]=="ready"){
+    long source;int duplicate,erase;
+    if(long.TryParse(fields[1],out source) && source>=0 && int.TryParse(fields[2],out duplicate) && (duplicate==0||duplicate==1) && int.TryParse(fields[3],out erase) && (erase==0||erase==1)){clipEditEpoch=source;clipDuplicate=duplicate!=0;clipErase=erase!=0;}continue;
+   }
    if(fields.Length==6 && fields[0]=="MG1" && fields[5]=="ready"){
     long source;int available,enabled;
     if(long.TryParse(fields[1],out source) && source>=0 && int.TryParse(fields[2],out available) && (available==0||available==1) && int.TryParse(fields[3],out enabled) && (enabled==0||enabled==1) && enabled<=available && Array.IndexOf(new[]{"1/4","1/4T","1/8","1/8T","1/16","1/16T","1/32","1/32T","Custom"},fields[4])>=0){gridEpoch=source;gridAvailable=available!=0;gridText=fields[4];}continue;
@@ -366,9 +376,9 @@ sealed class AbletonIntegration : IDisposable {
   frame[33]=(byte)(PatternMode && !SceneMode?0x7f:0x7c);frame[32]=(byte)(SceneMode?0x7f:0x7c);
   frame[35]=(byte)(NavigationMode?127:input.Shift?124:0);
   frame[31]=(byte)(steps!=null && steps.Epoch==feedbackEpoch && steps.Available?(StepMode && !EncoderOverlay?0x7f:0x7c):0);
-  frame[36]=(byte)(StepMode && steps.Duplicate?0x7c:0);
+  frame[36]=(byte)(PatternMode && !SceneMode?clipEditEpoch==feedbackEpoch && clipDuplicate?0x7c:0:StepMode && steps.Duplicate?0x7c:0);
   frame[19]=(byte)(loopEpoch==feedbackEpoch && loopEnabled?0x7f:0x7c);
-  frame[20]=(byte)(input.SelectOnly && eventsErase?0x7c:0);
+  frame[20]=(byte)(PatternMode && !SceneMode?clipEditEpoch==feedbackEpoch && clipErase?0x7c:0:input.SelectOnly && eventsErase?0x7c:0);
   frame[34]=(byte)(eventsEpoch==feedbackEpoch && eventsAvailable?(input.SelectOnly && !EncoderOverlay?0x7f:0x7c):0);
   frame[37]=(byte)(PatternMode && !SceneMode?(input.Select?0x7f:0x7c):StepMode?0x7c:0);
   frame[26]=(byte)(input.Shift?0x7f:0x7c);
