@@ -7,6 +7,82 @@ using System.Net;
 using System.Net.Sockets;
 
 class NativeMidiTests {
+ sealed class FakeNi : INiOwnership {
+  public bool Granted {get;set;}public bool Busy {get{return false;}}public string Status {get{return "test NI";}}public bool Wanted;
+  public void Request(bool value,long revision){Wanted=value;if(!value)Granted=false;}
+  public bool ThrowReset,ThrowDispose;public int Disposals;
+  public void Reset(){Wanted=Granted=false;if(ThrowReset)throw new InvalidOperationException("injected NI reset failure");}
+  public void Dispose(){Disposals++;Wanted=Granted=false;if(ThrowDispose)throw new InvalidOperationException("injected NI dispose failure");}
+ }
+ static void CleanupTests(){
+  for(int faults=1;faults<=3;faults++){
+   var owner=new FakeNi{Granted=true};
+   var integration=new AbletonIntegration(Console.WriteLine,(path,frame)=>{},39476,browserKeyWriter:key=>{},showStartupSplash:false,nativeHandoff:true,ownership:owner);
+   var repeat=typeof(AbletonIntegration).GetField("repeat",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(integration);
+   var thread=(Thread)typeof(NoteRepeat).GetField("worker",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(repeat);
+   using(var sender=new UdpClient()){
+    byte[] packet=Encoding.ASCII.GetBytes("MC8 65535 0 0 7 36 2 0 0 -1 0 0 1 0 0 0 ready");
+    Check(SpinWait.SpinUntil(()=>{sender.Send(packet,packet.Length,new IPEndPoint(IPAddress.Loopback,39476));integration.Tick("test-device",true,false);return integration.OwnsController && !integration.IsWriting;},8000),"cleanup fixture acquires ownership");
+   }
+   owner.ThrowReset=(faults&1)!=0;owner.ThrowDispose=(faults&2)!=0;
+   AggregateException failure=null;
+   try{integration.Dispose();}catch(AggregateException error){failure=error;}
+   Check(failure!=null && failure.InnerExceptions.Count==((faults==3)?2:1),"cleanup reports each injected failure after all stages");
+   Check(failure.Message.Contains("injected NI"),"cleanup message retains the failure reason for the tray log");
+   Check(!integration.OwnsController && !thread.IsAlive && !integration.FastRefreshActive,"cleanup closes input and joins scheduler despite NI failure");
+   using(var rebound=new UdpClient(new IPEndPoint(IPAddress.Loopback,39476))){}
+   bool present=false;for(uint id=0;id<midiInGetNumDevs();id++){Caps caps;if(midiInGetDevCapsW((UIntPtr)id,out caps,(uint)Marshal.SizeOf(typeof(Caps)))==0 && caps.name=="Mikro Companion")present=true;}
+   Check(!present,"cleanup removes MIDI endpoint despite earlier failures");
+   integration.Dispose();integration.Tick("test-device",true,false);
+   Check(owner.Disposals==1,"repeat disposal does not repeat cleanup");
+  }
+  Console.WriteLine("PASS cleanup fault injection: NI reset/dispose failures, scheduler join, UDP release, MIDI removal and idempotence");
+ }
+ static void OwnershipTests(){
+  var owner=new FakeNi();int reports=0;bool loseDuringWrite=false;
+  using(var integration=new AbletonIntegration(Console.WriteLine,(path,frame)=>{Interlocked.Increment(ref reports);if(loseDuringWrite)owner.Granted=false;},39475,browserKeyWriter:key=>{},showStartupSplash:false,nativeHandoff:true,ownership:owner))using(var sender=new UdpClient()){
+   Action<string> send=text=>{byte[] data=Encoding.ASCII.GetBytes(text);sender.Send(data,data.Length,new IPEndPoint(IPAddress.Loopback,39475));};
+   Action<string> tick=state=>{send(state);send("MC4 65535 0 0 7 36 2 ready");integration.Tick("test-device",true,false);};
+   Check(SpinWait.SpinUntil(()=>{tick("MO1 2 0 1 0 ready");return owner.Wanted;},8000),"handoff requests NI after live state arrives");
+   Check(!integration.OwnsController && reports==0,"request is not an ownership grant");
+   owner.Granted=true;tick("MO1 2 0 1 0 ready");Check(integration.OwnsController,"NI grant permits companion");
+   Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"handoff output drains");
+   owner.Granted=false;Check(!integration.OwnsController,"NI loss closes input gate before next tick");
+   int previous=reports;tick("MO1 2 0 1 0 ready");Thread.Sleep(30);Check(reports==previous,"NI loss causes no panel clear");
+   owner.Granted=true;tick("MO1 2 0 1 0 ready");Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"handoff reacquire redraw drains");
+   previous=reports;tick("MO1 2 1 1 0 ready");Thread.Sleep(30);Check(!owner.Wanted && !integration.OwnsController && previous==reports,"Maschine track releases without clearing native panel");
+   tick("MO1 2 0 2 0 ready");Check(owner.Wanted,"ordinary track can acquire with multiple native instances");
+   owner.Granted=true;tick("MO1 2 0 2 0 ready");Check(integration.OwnsController,"NI grant enables companion with multiple native instances");
+   Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"multi-instance panel output drains");
+   previous=reports;tick("MO1 2 1 2 0 ready");Thread.Sleep(30);Check(!owner.Wanted && !integration.OwnsController && reports==previous,"native track releases for manual instance selection without panel clear");
+   tick("MO1 2 0 2 0 ready");Check(owner.Wanted,"ordinary track requests control again after manual native selection");
+   tick("MO1 2 0 1 1 ready");Check(!owner.Wanted,"uncertain device identity blocks acquisition");
+   tick("MO1 1 0 1 0 ready");Check(!owner.Wanted,"wrong track epoch blocks acquisition");
+   tick("MO1 2 0 1 0 ready");owner.Granted=true;loseDuringWrite=true;previous=reports;tick("MO1 2 0 1 0 ready");
+   Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"loss during report completes batch cancellation");Check(reports-previous<=1,"ownership checked between individual panel reports");
+   loseDuringWrite=false;integration.Pause(true);Check(!owner.Wanted,"manual pause releases NI lease");
+   send("MC8 65535 0 0 7 36 3 0 0 -1 0 0 1 0 0 0 ready");integration.Tick("test-device",true,false);
+   Check(owner.Wanted,"bundled ownership requests lease without separate MO1");
+   owner.Granted=true;integration.Tick("test-device",true,false);
+   for(int epoch=4;epoch<24;epoch++){
+    send("MO1 "+epoch+" 0 0 0 ready");integration.Tick("test-device",true,false);
+    Check(owner.Granted && owner.Wanted && integration.OwnsController,"split legacy packet cannot release bundled lease");
+    send("MC8 65535 0 0 7 36 "+epoch+" 0 0 -1 0 0 1 0 0 0 ready");integration.Tick("test-device",true,false);
+    Check(owner.Granted && owner.Wanted && integration.OwnsController,"ordinary track change preserves NI lease");
+   }
+   send("MC8 65535 0 0 7 36 24 0 0 -1 0 0 1 1 1 0 ready");integration.Tick("test-device",true,false);
+   Check(!owner.Wanted && !integration.OwnsController,"bundled Maschine track releases lease immediately");
+   send("MC8 65535 0 0 7 36 25 0 0 -1 0 0 1 0 1 0 ready");integration.Tick("test-device",true,false);
+   Check(owner.Wanted,"bundled ordinary track restores acquisition");
+   owner.Granted=true;
+   send("MC8 65535 0 0 7 36 26 0 0 -1 0 0 1 0 1 1 ready");integration.Tick("test-device",true,false);
+   Check(!owner.Wanted && !integration.OwnsController,"bundled uncertain devices release lease");
+   send("MC8 65535 0 0 7 36 27 0 0 -1 0 0 1 0 0 0 ready");integration.Tick("test-device",true,false);owner.Granted=true;
+   Thread.Sleep(1100);integration.Tick("test-device",true,false);
+   Check(!owner.Wanted && !integration.OwnsController,"expired bundled ownership still releases lease");
+  }
+  Console.WriteLine("PASS handoff acquisition gate, immediate loss gate, native-track release, ambiguous state guards and panel cancellation");
+ }
  [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]struct Caps{public ushort a,b;public uint c;[MarshalAs(UnmanagedType.ByValTStr,SizeConst=32)]public string name;public uint support;}
  delegate void Callback(IntPtr h,uint message,UIntPtr instance,UIntPtr data,UIntPtr time);
  [DllImport("winmm.dll")]static extern uint midiInGetNumDevs();
@@ -87,9 +163,9 @@ class NativeMidiTests {
     midi.Transport(MikroTransport.Follow);midi.Transport(MikroTransport.GridFeedback);
     Check(SpinWait.SpinUntil(()=>Count()==52,1000),"Follow delivered without Grid MIDI output");
     lock(received){Check(received[50]==(uint)(0xb0|(27<<8)|(127<<16))&&received[51]==(uint)(0xb0|(27<<8)),"Follow press and release CC");}
-    midi.RootTurn(1);midi.RootTurn(-1);midi.Bank(0);
+    midi.ScaleTurn(1);midi.ScaleTurn(-1);midi.Bank(0);
     Check(SpinWait.SpinUntil(()=>Count()==56,1000),"root turns and range reset delivered");
-    lock(received){Check(received[52]==(uint)(0xb0|(35<<8)|(1<<16))&&received[53]==(uint)(0xb0|(35<<8)|(127<<16))&&received[54]==(uint)(0xb0|(36<<8)|(127<<16))&&received[55]==(uint)(0xb0|(36<<8)),"root relative and reset CC mapping");}
+    lock(received){Check(received[52]==(uint)(0xb0|(33<<8)|(1<<16))&&received[53]==(uint)(0xb0|(33<<8)|(127<<16))&&received[54]==(uint)(0xb0|(36<<8)|(127<<16))&&received[55]==(uint)(0xb0|(36<<8)),"root relative and reset CC mapping");}
     midi.PitchBend(16383);midi.Modulation(127);midi.ReleaseAll();
     Check(SpinWait.SpinUntil(()=>Count()==60,1000),"pitch and modulation including pause reset delivered");
     lock(received)Check(received[56]==(uint)(0xe0|(127<<8)|(127<<16))&&received[57]==(uint)(0xb0|(1<<8)|(127<<16))&&received[58]==(uint)(0xe0|(64<<16))&&received[59]==(uint)(0xb0|(1<<8)),"expression uses 14-bit pitch bend and CC1");
@@ -184,7 +260,11 @@ class NativeMidiTests {
     var nextBank=Encoding.ASCII.GetBytes("MC3 0 1 0 7 52 ready");sender.Send(nextBank,nextBank.Length,new IPEndPoint(IPAddress.Loopback,39474));
     string screen52=Convert.ToBase64String(BankScreen.Report(52,false));
     Check(SpinWait.SpinUntil(()=>{integration.Tick("test-device",true,false);lock(frames)return screens.Count>=2&&Convert.ToBase64String(LatestTop(screens))==screen52;},1000),"bank acknowledged before strike");
+    var countIn=Encoding.ASCII.GetBytes("MR1 0 120 -4 0 ready");sender.Send(countIn,countIn.Length,new IPEndPoint(IPAddress.Loopback,39474));Thread.Sleep(10);integration.Tick("test-device",true,false);
     integration.Feed("test-device",r);Check(SpinWait.SpinUntil(()=>Count()==2,1000),"HID to MIDI delivery");
+    var afterCountIn=Encoding.ASCII.GetBytes("MR1 0 120 0 1 ready");sender.Send(afterCountIn,afterCountIn.Length,new IPEndPoint(IPAddress.Loopback,39474));
+    for(int tick=0;tick<4;tick++){Thread.Sleep(10);integration.Tick("test-device",true,false);}
+    Check(Count()==2,"recording clock transition does not send a premature physical-pad NoteOff");
     Check(SpinWait.SpinUntil(()=>{lock(frames)return frames[frames.Count-1][52]==31;},1000),"strike lights an empty pad brightly");
     var release=(byte[])r.Clone();release[2]=0x30;release[3]=0;integration.Feed("test-device",release);
     Check(SpinWait.SpinUntil(()=>Count()==3,1000),"release after bright strike");
@@ -238,11 +318,27 @@ class NativeMidiTests {
     Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(81<<8)|(1<<16))) && received.Contains((uint)(0xb0|(82<<8)|(127<<16))) && received.Contains((uint)(0xb0|(80<<8)|(127<<16)));},1000),"Plugin button and plain/Shift arrows send distinct device commands");
     var deviceDial=new byte[64];deviceDial[0]=1;deviceDial[7]=2;integration.Feed("test-device",deviceDial);
     lock(received)received.Clear();deviceDial[7]=3;integration.Feed("test-device",deviceDial);deviceDial[4]=2;deviceDial[7]=4;integration.Feed("test-device",deviceDial);
-    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(83<<8)|(1<<16))) && received.Contains((uint)(0xb0|(84<<8)|(1<<16)));},1000),"device encoder distinguishes normal and fine adjustment");
+    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(83<<8)|(1<<16))) && received.Contains((uint)(0xb0|(84<<8)|(1<<16)));},1000),"device encoder distinguishes normal and accelerated adjustment");
     lock(received)foreach(uint message in received)Check((message&0xffff)!=(uint)(0xb0|(65<<8)) && (message&0xffff)!=(uint)(0xb0|(33<<8)),"device encoder does not also change note banks or root");
     deviceDial[4]=0;integration.Feed("test-device",deviceDial);
     Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"device parameter OLED completes");
     lock(frames)Check(Convert.ToBase64String(LatestBottom(screens))==Convert.ToBase64String(BankScreen.TextReport("Cutoff\n"+BankScreen.Mark("2.40 kHz"),true)),"device OLED uses the native formatted value");
+    feedback("MDEV2 20 1 1 0 1 1 0 RmlsdGVy Q3V0b2Zm Mi40MCBrSHo= 0 ready");
+    Check(SpinWait.SpinUntil(()=>{lock(frames){var f=frames[frames.Count-1];return f[56]==71 && f[57]==0 && f[11]==0 && f[12]==0;}},1000),"device strip keeps left LED lit at minimum and replaces Pitch/Mod");
+    feedback("MR1 20 120 0 0 ready");
+    Check(SpinWait.SpinUntil(()=>{lock(frames)return frames[frames.Count-1][18]==124;},1000),"device strip does not disable Note Repeat availability");
+    lock(received)received.Clear();control(39,false);
+    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(93<<8)|(127<<16)));},1000),"device encoder click sends default reset");
+    lock(received)received.Clear();deviceDial[10]=1;integration.Feed("test-device",deviceDial);deviceDial[10]=200;integration.Feed("test-device",deviceDial);deviceDial[10]=0;integration.Feed("test-device",deviceDial);
+    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(94<<8))) && received.Contains((uint)(0xb0|(94<<8)|(127<<16)));},1000),"device strip endpoints map to absolute parameter values");
+    lock(received){int strips=0;foreach(uint message in received){if((message&0xffff)==(uint)(0xb0|(94<<8)))strips++;Check((message&0xff)!=0xe0 && (message&0xffff)!=(uint)(0xb0|(1<<8)),"device strip does not also emit Pitch or Mod");}Check(strips==2,"device strip release does not reset parameter");}
+    feedback("MDEV2 20 1 1 0 1 1 0 RmlsdGVy Q3V0b2Zm Mi40MCBrSHo= 127 ready");
+    Check(SpinWait.SpinUntil(()=>{lock(frames){var f=frames[frames.Count-1];for(int i=0;i<25;i++)if(f[56+i]!=71)return false;return true;}},1000),"device maximum fills every strip LED");
+    feedback("MDEV2 20 1 1 0 1 1 0 RmlsdGVy Q3V0b2Zm Mi40MCBrSHo= 64 ready");
+    Check(SpinWait.SpinUntil(()=>{lock(frames){var f=frames[frames.Count-1];return f[68]==71 && f[69]==0;}},1000),"external device feedback updates strip fill");
+    feedback("MDEV2 20 1 1 0 1 1 0 RmlsdGVy Q3V0b2Zm Mi40MCBrSHo= -1 ready");
+    lock(received)received.Clear();deviceDial[10]=50;integration.Feed("test-device",deviceDial);deviceDial[10]=0;integration.Feed("test-device",deviceDial);
+    Thread.Sleep(30);lock(received)foreach(uint message in received)Check((message&0xffff)!=(uint)(0xb0|(94<<8)),"unavailable device range rejects touch");
     deviceDial[7]=0;integration.Feed("test-device",deviceDial);
     feedback("MDEV1 20 1 0 0 1 1 0 RmlsdGVy Q3V0b2Zm Mi40MCBrSHo= ready");
     lock(received)received.Clear();control(31,true);control(34,true);
@@ -326,6 +422,11 @@ class NativeMidiTests {
     keyboardState(true,major);
     lock(received)received.Clear();control(8,false);control(8,false);
     Check(SpinWait.SpinUntil(()=>{lock(frames)return frames[frames.Count-1][9]==0 && frames[frames.Count-1][10]==124;},1000),"Keyboard parameter selection stops at Root Note");
+    var octaveDial=new byte[64];octaveDial[0]=1;octaveDial[7]=6;integration.Feed("test-device",octaveDial);
+    octaveDial[4]=2;octaveDial[7]=7;integration.Feed("test-device",octaveDial);
+    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(91<<8)|(1<<16)));},1000),"Shift root encoder sends one octave command");
+    octaveDial[4]=0;octaveDial[7]=6;integration.Feed("test-device",octaveDial);
+    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(33<<8)|(127<<16)));},1000),"unshifted root encoder keeps semitone command");
     control(9,false);
     Check(SpinWait.SpinUntil(()=>{lock(frames)return frames[frames.Count-1][9]==124 && frames[frames.Count-1][10]==124;},1000),"Scale sits between Root Note and Scale Mode");
     var pageEncoder=new byte[64];pageEncoder[0]=1;pageEncoder[7]=1;integration.Feed("test-device",pageEncoder);
@@ -434,6 +535,11 @@ class NativeMidiTests {
     selectionState=Encoding.ASCII.GetBytes("MV2 21 1 1 3 1 1 ready");sender.Send(selectionState,selectionState.Length,new IPEndPoint(IPAddress.Loopback,39474));integration.Tick("test-device",true,false);
     Check(SpinWait.SpinUntil(()=>{lock(frames)return frames[frames.Count-1][20]==124;},1000),"Erase available only with Events selection");control(19,false);
     Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(47<<8)|(127<<16)));},1000),"Events Erase CC");
+    feedback("ME1 21 256 ready");shifted[4]=2;integration.Feed("test-device",shifted);
+    Check(SpinWait.SpinUntil(()=>{lock(frames)return frames[frames.Count-1][44]==68;},1000),"Events Clear pad 9 lights Dim white with Shift");
+    lock(received)received.Clear();var clearPad=(byte[])r.Clone();clearPad[1]=4;integration.Feed("test-device",clearPad);integration.Feed("test-device",clearPad);
+    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(37<<8)|(9<<16)));},1000),"Shift pad 9 sends Clear command");
+    clearPad[2]=0x30;clearPad[3]=0;integration.Feed("test-device",clearPad);var clearShiftRelease=new byte[64];clearShiftRelease[0]=1;integration.Feed("test-device",clearShiftRelease);
     selectionState=Encoding.ASCII.GetBytes("MV2 21 1 0 0 0 0 ready");sender.Send(selectionState,selectionState.Length,new IPEndPoint(IPAddress.Loopback,39474));
     var menuState=Encoding.ASCII.GetBytes("MK2 21 1 1 0 36 "+major+" TWFqb3I= 0 ready");sender.Send(menuState,menuState.Length,new IPEndPoint(IPAddress.Loopback,39474));integration.Tick("test-device",true,false);
     Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"keyboard menu screen completes");
@@ -537,6 +643,13 @@ class NativeMidiTests {
     control(32,false);Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(70<<8)|(127<<16)));},1000),"Pattern button sends toggle");
     string patternColors="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16";
     var patternState=Encoding.ASCII.GetBytes("MPT1 21 1 0 0 0 1 4096 0 0 6 "+patternColors+" ready");sender.Send(patternState,patternState.Length,new IPEndPoint(IPAddress.Loopback,39474));
+    feedback("MPC1 21 1 1 ready");
+    Check(SpinWait.SpinUntil(()=>{integration.Tick("test-device",true,false);lock(frames)return frames[frames.Count-1][36]==124 && frames[frames.Count-1][20]==124;},1000),"Pattern clip edit buttons light when available");
+    lock(received)received.Clear();control(35,false);control(19,false);
+    Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(92<<8)|(1<<16))) && received.Contains((uint)(0xb0|(92<<8)|(2<<16)));},1000),"Pattern Duplicate and Erase address selected clip");
+    feedback("MPC1 21 0 0 ready");
+    Check(SpinWait.SpinUntil(()=>{lock(frames)return frames[frames.Count-1][36]==0 && frames[frames.Count-1][20]==0;},1000),"empty Pattern slot disables clip edit lighting");
+    lock(received)received.Clear();control(35,false);control(19,false);Thread.Sleep(20);Check(Count()==0,"unavailable clip edits produce no commands");
     Check(SpinWait.SpinUntil(()=>{integration.Tick("test-device",true,false);lock(frames){var f=frames[frames.Count-1];return f[33]==127&&f[40]==55&&f[52]==4&&f[9]==0&&f[10]==0;}},1000),"Pattern colors, top-row playing state and grid arrow bounds");
     lock(received)received.Clear();integration.Feed("test-device",r);integration.Feed("test-device",release);
     Check(SpinWait.SpinUntil(()=>{lock(received)return received.Contains((uint)(0xb0|(71<<8)))&&received.Contains((uint)(0xb0|(71<<8)|(16<<16)));},1000),"Pattern pad press and release reach Live");
@@ -636,6 +749,7 @@ class NativeMidiTests {
    integration.Tick("test-device",false,false);Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"Live exit clears screen");
    Check(SpinWait.SpinUntil(()=>{tick();return screen(BankScreen.StartupSplash);},1000),"new Live session shows startup screen again");
   }
+  OwnershipTests();CleanupTests();
   Console.WriteLine("PASS Windows MIDI loopback, native HID mapping, pause releases and suppresses notes, async panel output, endpoint cleanup");return 0;
  }
 }

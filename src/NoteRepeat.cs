@@ -84,7 +84,9 @@ sealed class NoteRepeat : IDisposable {
    double correction=Math.Max(-.002,Math.Min(.002,error*.1));
    anchorBeat=running?(transition || jump || !enabled?observed:before+correction):playing?0:before;
    anchorTime=now;tempo=bpm;playing=running;
-   if(transition || jump){StopVoices();arpCursor=0;lastPulse=double.NegativeInfinity;Regrid();}
+   // Manual notes also pass through this module, but belong to the physical
+   // pad lifetime. Only generated repeat/Arp voices follow transport resets.
+   if(transition || jump){if(enabled)StopVoices();arpCursor=0;lastPulse=double.NegativeInfinity;Regrid();}
   }wake.Set();
  }
  public void SetEnabled(bool value){lock(gate){if(enabled==value && !arpeggiator)return;StopVoices();arpeggiator=latch=false;enabled=value;lastPulse=double.NegativeInfinity;if(enabled)Regrid();}wake.Set();}
@@ -143,5 +145,8 @@ sealed class NoteRepeat : IDisposable {
   }}catch(Exception error){lock(gate){enabled=false;try{StopVoices();}catch{}}log("Note repeat stopped: "+error.Message);}
   finally{if(timerPeriod){timeEndPeriod(1);timerPeriod=false;}}
  }
- public void Dispose(){lock(gate){Reset();disposed=true;}wake.Set();if(worker!=null)worker.Join();wake.Dispose();}
+ public void Dispose(){
+  lock(gate){if(disposed)return;disposed=true;}
+  try{Reset();}finally{wake.Set();if(worker!=null)worker.Join();wake.Dispose();}
+ }
 }

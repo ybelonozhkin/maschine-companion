@@ -180,3 +180,38 @@ class PatternGrid:
             int(self.track > 0), int(self.track + 4 < len(self.tracks())),
             playing, triggered, recording, len(self.tracks()),
             " ".join(str(color) for color in colors), track_playing, selected, selectable)
+
+    def edit_target(self):
+        if not self.enabled or self.scene_mode:
+            return None
+        track = self.song.view.selected_track
+        slot = getattr(self.song.view, 'highlighted_clip_slot', None)
+        slots = tuple(getattr(track, 'clip_slots', ()))
+        if (track not in self.song.tracks or slot not in slots
+                or not getattr(slot, 'has_clip', False)
+                or getattr(slot, 'is_group_slot', False)
+                or getattr(track, 'is_frozen', False)):
+            return None
+        return track, slot, slots.index(slot)
+
+    def edit_packet(self, epoch):
+        target = self.edit_target()
+        duplicate = bool(target and callable(getattr(target[0], 'duplicate_clip_slot', None)))
+        erase = bool(target and callable(getattr(target[1], 'delete_clip', None)))
+        return 'MPC1 {} {} {} ready'.format(epoch, int(duplicate), int(erase))
+
+    def duplicate(self):
+        target = self.edit_target()
+        if target is None:
+            return
+        track, slot, index = target
+        self.release_all()
+        # Native Session Duplicate handles occupied following slots itself.
+        track.duplicate_clip_slot(index)
+
+    def erase(self):
+        target = self.edit_target()
+        if target is None:
+            return
+        self.release_all()
+        target[1].delete_clip()

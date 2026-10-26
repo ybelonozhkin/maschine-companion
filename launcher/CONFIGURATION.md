@@ -1,6 +1,6 @@
 # Configuration
 
-Edit `companion.ini` in the project folder, then choose **Reload config**. Windows startup is controlled separately through the tray menu.
+Edit `companion.ini` in the project folder, then choose **Reload config**. Changes to `EnableAbleton`, `EnableNativeHandoff` and `MidiActivityInputs` require a companion restart. Windows startup is controlled separately through the tray menu.
 
 ```ini
 Executable=C:\Program Files\Native Instruments\Maschine 3\Maschine 3.exe

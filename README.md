@@ -4,11 +4,11 @@ Use the Maschine Mikro MK3 as a control surface for Ableton Live on Windows. Pla
 
 Pads show track and clip colors, selected sounds and note activity. The OLED shows the parameter name and its value.
 
-Version **0.3.0**. See the [changelog](CHANGELOG.md) for changes and the [roadmap](ROADMAP.md) for planned features.
+Version **0.4.0**. See the [changelog](CHANGELOG.md) for changes and the [roadmap](ROADMAP.md) for planned features.
 
 ## Ableton Live
 
-Tested with **Live 12.4.6 Standard on Windows 11 x64**. The companion uses the Mikro in native mode and connects to a Live Remote Script. Enable the integration during setup.
+Tested with **Live 12.4.6 and 12.4.7 Standard on Windows 11 x64**. The companion uses the Mikro in native mode and connects to a Live Remote Script. Enable the integration during setup.
 
 | Feature | Controls |
 | --- | --- |
@@ -22,13 +22,13 @@ Tested with **Live 12.4.6 Standard on Windows 11 x64**. The companion uses the M
 | Navigate Arrangement | Shift + Variation; Position and Markers pages. Shift + Scene switches Session / Arrangement views. |
 | Select and edit notes | Events and the editing commands printed on the pads. |
 | Load sounds | Browse; encoder navigates, press to expand or load, Favorites toggles the red Collection. |
-| Adjust devices | Plug-in; arrows select parameters, Shift + arrows select devices. Encoder adjusts values; Shift gives fine control. |
+| Adjust devices | Plug-in; arrows select parameters, Shift + arrows select devices. Encoder adjusts values; Shift makes changes five times faster. Press to reset; the Smart Strip controls the same parameter. |
 | Control playback | Play, Stop, Rec, Restart, Tap and Follow; Shift accesses Loop and Metronome. |
 | Select tracks (beta) | Group + arrows select tracks; Group + Shift + right creates a MIDI track. |
 | Mix the selected track | Mute, Solo and Volume. Volume changes by 0.5 dB, or 0.1 dB with Shift; encoder press resets it to 0 dB. |
 | Change expression | Fixed Vel / 16 Vel, Pitch and Mod on the Smart Strip. |
 
-See [installation and requirements](GETTING-STARTED.md#ableton-live-installation) and the [full controls guide](ableton/README.md). Arm tracks manually for recording. Before loading Maschine as a plug-in, choose **Pause** in the tray; choose **Resume** after releasing the controller from Maschine.
+See [installation and requirements](GETTING-STARTED.md#ableton-live-installation) and the [full controls guide](ableton/README.md). Arm tracks manually for recording. When using Maschine as a plug-in, choose **Pause** in the tray or enable the [experimental automatic handoff](ableton/README.md#experimental-automatic-handoff).
 
 ## Download or build
 

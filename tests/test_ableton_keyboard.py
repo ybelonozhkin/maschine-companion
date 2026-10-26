@@ -47,6 +47,36 @@ class KeyboardTests(unittest.TestCase):
         song.root_note = 2
         self.assertEqual(keyboard.notes(song, "a")[0], 38)
 
+    def test_octave_preserves_root_scale_and_other_tracks(self):
+        song = self.song()
+        song.view = types.SimpleNamespace(selected_track='a')
+        song.root_note = 1
+        keyboard = module.Keyboard()
+        keyboard.enabled = True
+        keyboard.starts.update(a=37, b=61)
+        keyboard.octave(song, 1)
+        self.assertEqual(keyboard.start(song, 'a'), 49)
+        keyboard.octave(song, -1)
+        self.assertEqual(keyboard.start(song, 'a'), 37)
+        self.assertEqual(keyboard.starts['b'], 61)
+        self.assertEqual((song.root_note, song.scale_name, song.scale_mode), (1, 'Major', True))
+
+    def test_octave_bounds_keep_pitch_class(self):
+        song = self.song()
+        song.view = types.SimpleNamespace(selected_track='a')
+        song.root_note = 11
+        keyboard = module.Keyboard()
+        keyboard.enabled = True
+        keyboard.starts['a'] = 119
+        keyboard.octave(song, 1)
+        self.assertEqual(keyboard.start(song, 'a'), 119)
+        keyboard.octave(song, -100)
+        self.assertEqual(keyboard.start(song, 'a'), 11)
+        self.assertEqual(song.root_note, 11)
+        keyboard.enabled = False
+        keyboard.octave(song, 1)
+        self.assertEqual(keyboard.start(song, 'a'), 11)
+
     def test_catalog_order_and_no_wrap(self):
         song = self.song()
         keyboard = module.Keyboard()

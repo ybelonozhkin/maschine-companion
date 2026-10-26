@@ -31,3 +31,10 @@ The controller implementation was informed by these community protocol reference
 
 These projects are acknowledged as protocol references; their libraries are not
 bundled with the companion.
+
+The NI service client also used the published protocol descriptions in
+[Rebellion](https://github.com/terminar/rebellion/tree/59933a370f24fb897c81b6ba82c05ffdacb454f3)
+(Björn Kalkbrenner, LGPLv3) and
+[Encdr](https://github.com/RufusIbiza/Encdr/tree/2504b198b6afd5c7f7b624fc4cfe879fc285a522)
+(Rufus White, GPL-3.0-or-later), checked with local interoperability tests.
+Their implementations are not included or linked.

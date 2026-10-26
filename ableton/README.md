@@ -12,6 +12,22 @@ Start the companion before Live. Use **MikroCompanion** as the control surface, 
 
 Choose **Pause** in the tray before loading Maschine as a plug-in or giving the controller to another application. Close/remove Maschine, return to native mode and choose **Resume**. Use the indefinite pause for this; **Pause for 1 hour** resumes automatically.
 
+### Experimental automatic handoff
+
+Set `EnableNativeHandoff=true` in `companion.ini`, then restart the companion.
+Selecting a track containing Maschine releases the Mikro to NI; selecting an
+ordinary track requests control for the companion. NI's Host Integration Agent
+must be installed and running.
+Maschine may redraw its screen on the first pad press after returning.
+
+With several Maschine instances, select the Mikro manually in the desired
+instance's **Controller** menu. Selecting a Live track does not choose that
+Maschine instance; NI may restore a previously used instance.
+
+This option supports one Mikro. Unknown device identity or missing script state
+pause the integration. If the NI connection fails, use **Resume** to retry.
+Leave the option disabled to use manual Pause/Resume.
+
 ## Display and lighting
 
 The OLED shows the current parameter and value. An inverse value is the encoder target; lit arrows indicate another parameter page. Hold **Group** to see the selected track's number and name.
@@ -68,7 +84,7 @@ Use the arrows to choose a parameter, then turn the encoder:
 
 | Page | Encoder action |
 | --- | --- |
-| Root Note | Change the starting note by semitones and update Live's root. |
+| Root Note | Change the starting note by semitones and update Live's root. Hold Shift to move by octaves, keeping the same root and scale. |
 | Scale | Choose Live's scale. |
 | Scale Mode | Turn right for On, left for Off. |
 
@@ -90,6 +106,8 @@ Turn the encoder to select individual events across those pitches. Hold Shift wh
 
 **Erase** deletes the selected notes. Shift + pads applies the printed editing commands. Press Events again to return to playing. Changing tracks or closing the Clip editor exits Events.
 
+In Events, **Shift + pad 9 (Clear)** also deletes the selected notes. With no notes selected it does nothing.
+
 ## Editing with Shift
 
 Hold Shift in Pad Mode, Keyboard or Step to use the commands printed on the pads. Available commands light dim white and flash when pressed.
@@ -106,7 +124,7 @@ Edits use the MIDI clip open on the selected track. They affect selected notes, 
 
 Quantize moves notes to the straight clip grid; Quantize 50% moves them halfway to it. Nudge moves by half a grid division. Both are unavailable with the grid off. Transpose moves by 1 or 12 semitones, including with Scale Mode on. Each edit is one undo step.
 
-Step Undo/Redo, Clear, Clear Auto, Copy and Paste are unassigned.
+Step Undo/Redo, Clear Auto, Copy and Paste are unassigned. Clear is available in Events only.
 
 ## Volume and tempo
 
@@ -135,6 +153,10 @@ Press **Pattern** for a 4-by-4 Session grid: columns are tracks and rows are sce
 Press a filled pad to launch its clip. An empty pad selects that slot without recording or creating a clip. Hold **Select** to select any slot without launching it and open filled clips in the editor. While Select is held, available empty slots are dim white and the selected slot is bright; missing tracks or scenes stay dark.
 
 Turn the encoder to scroll scenes; **Shift + encoder** scrolls four tracks at a time. This also works while holding Select.
+
+**Duplicate** duplicates the selected clip using Live's Session Duplicate command.
+**Erase** deletes the selected clip. Select a clip with **Select + pad** or with
+the mouse; both buttons are dark for an empty slot.
 
 Hold **Shift** for track Stop: only the bottom four pads are active, one per column. Bright red means playing; dim red means stopped. Press a pad to stop that track's clips, including those outside the visible grid. Release Shift to return to clip launching. Select takes priority if both are held.
 
@@ -176,9 +198,13 @@ Press **Plug-in** to control the selected device on the current track. Press it 
 | **Left / Right** | Select the previous or next parameter. |
 | **Shift + Left / Right** | Select the previous or next device in the chain. |
 | **Encoder** | Change a continuous parameter by 1/127 of its range; a discrete parameter by one choice. |
-| **Shift + encoder** | Adjust continuous parameters ten times more finely; discrete parameters still move by one choice. |
+| **Shift + encoder** | Change parameters five times faster: 5/127 of a continuous range or five discrete choices. |
+| **Encoder press** | Reset the selected parameter to its default, when Live provides one. |
+| **Smart Strip** | Set the selected parameter directly. The LEDs show its position; the left LED stays on at minimum. |
 
 The display shows the parameter name and its value in Live's units. Device names appear briefly when switching devices. Navigation stops at the ends; unassigned directions stay dark. Selecting another device with the mouse also changes the controller's target.
+
+Live exposes defaults for continuous parameters. Encoder press leaves discrete choices and parameters without a default unchanged. Releasing the strip keeps the chosen value. The strip follows parameter changes made with the encoder, mouse or automation.
 
 For third-party plug-ins, expose the controls you want through Live's **Configure** panel. Devices inside a Rack chain can first be selected in Live; Shift + arrows then navigates that chain.
 

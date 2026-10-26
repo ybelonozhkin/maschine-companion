@@ -9,11 +9,13 @@ $uiaArgs = @("/reference:$framework\WPF\UIAutomationClient.dll", "/reference:$fr
 if (!(Test-Path -LiteralPath "$framework\csc.exe")) { throw "The x64 .NET Framework compiler was not found: $framework\csc.exe" }
 $manifestArgs = @()
 if (Test-Path -LiteralPath 'bin\CompanionMidi.dll') { $manifestArgs = @('/win32manifest:src\native\Midi.manifest') }
-& "$framework\csc.exe" @manifestArgs @uiaArgs /nologo /target:exe /platform:x64 /out:bin\CompanionTests.exe /reference:System.Windows.Forms.dll /reference:System.Drawing.dll src\Companion.cs src\WindowFocus.cs src\WindowClose.cs src\AssemblyInfo.cs src\StartupRegistration.cs src\SessionState.cs src\MikroInput.cs src\NativeMidi.cs src\AbletonIntegration.cs src\NoteRepeat.cs
+& "$framework\csc.exe" @manifestArgs @uiaArgs /nologo /target:exe /platform:x64 /out:bin\CompanionTests.exe /reference:System.Windows.Forms.dll /reference:System.Drawing.dll src\Companion.cs src\WindowFocus.cs src\WindowClose.cs src\AssemblyInfo.cs src\StartupRegistration.cs src\SessionState.cs src\MikroInput.cs src\NativeMidi.cs src\AbletonIntegration.cs src\NoteRepeat.cs src\NiControllerSession.cs
 if ($LASTEXITCODE -ne 0) { throw 'Test compilation failed' }
 & .\bin\CompanionTests.exe --self-test
 if ($LASTEXITCODE -ne 0) { throw 'Self-test failed' }
-& "$framework\csc.exe" @manifestArgs @uiaArgs /nologo /target:winexe /platform:x64 /out:bin\MaschineCompanion.exe /reference:System.Windows.Forms.dll /reference:System.Drawing.dll src\Companion.cs src\WindowFocus.cs src\WindowClose.cs src\AssemblyInfo.cs src\StartupRegistration.cs src\SessionState.cs src\MikroInput.cs src\NativeMidi.cs src\AbletonIntegration.cs src\NoteRepeat.cs
+& .\bin\CompanionTests.exe --ni-self-test
+if ($LASTEXITCODE -ne 0) { throw 'NI transport self-test failed' }
+& "$framework\csc.exe" @manifestArgs @uiaArgs /nologo /target:winexe /platform:x64 /out:bin\MaschineCompanion.exe /reference:System.Windows.Forms.dll /reference:System.Drawing.dll src\Companion.cs src\WindowFocus.cs src\WindowClose.cs src\AssemblyInfo.cs src\StartupRegistration.cs src\SessionState.cs src\MikroInput.cs src\NativeMidi.cs src\AbletonIntegration.cs src\NoteRepeat.cs src\NiControllerSession.cs
 if ($LASTEXITCODE -ne 0) { throw 'Compilation failed' }
 
 # Keep notices beside every locally built executable, including launcher-only builds.
@@ -32,3 +34,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Mikro input tests failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Note repeat test compilation failed' }
 & .\bin\NoteRepeatTests.exe
 if ($LASTEXITCODE -ne 0) { throw 'Note repeat tests failed' }
+
+& "$framework\csc.exe" /nologo /nowarn:0649 /target:exe /platform:x64 /out:bin\MidiConnectionTests.exe src\NativeMidi.cs src\MikroInput.cs tests\MidiConnectionTests.cs
+if ($LASTEXITCODE -ne 0) { throw 'MIDI connection test compilation failed' }
+& .\bin\MidiConnectionTests.exe
+if ($LASTEXITCODE -ne 0) { throw 'MIDI connection tests failed' }

@@ -18,6 +18,7 @@ from .navigation import Navigation
 from .browser import Browser
 from .sequencer import Sequencer
 from .pattern import PatternGrid
+from .ownership import inspect_song
 
 
 class MikroCompanion(ControlSurface):
@@ -31,6 +32,9 @@ class MikroCompanion(ControlSurface):
         self._layout_dirty = True
         self._state_dirty = True
         self._last_sent = 0
+        self._ownership_at = 0
+        self._ownership_track = None
+        self._ownership_state = (False, 0, True)
         self._retry_at = 0
         self._last_error = None
         self._last_layout = None
@@ -175,10 +179,18 @@ class MikroCompanion(ControlSurface):
                                (87, lambda v: self._navigation_action("navigate", v if v < 64 else v - 128)),
                                (88, lambda v: self._navigation_action("turn", v if v < 64 else v - 128)),
                                (89, lambda v: self._navigation_action("turn", v if v < 64 else v - 128, True)),
-                               (90, lambda v: self._toggle_document_view() if v else None)):
+                               (90, lambda v: self._toggle_document_view() if v else None),
+                               (91, lambda v: self._scale_octave(v))):
                 button = ButtonElement(False, MIDI_CC_TYPE, 0, cc)
                 button.add_value_listener(action)
                 setattr(self, "_encoder_control_{}".format(cc), button)
+
+            self._pattern_edit = ButtonElement(False, MIDI_CC_TYPE, 0, 92)
+            self._pattern_edit.add_value_listener(lambda value: self._pattern_action('duplicate' if value == 1 else 'erase') if value in (1, 2) else None)
+            self._device_reset = ButtonElement(True, MIDI_CC_TYPE, 0, 93)
+            self._device_reset.add_value_listener(lambda value: self._device_action("reset") if value else None)
+            self._device_strip = ButtonElement(False, MIDI_CC_TYPE, 0, 94)
+            self._device_strip.add_value_listener(lambda value: self._device_action("strip", value))
 
         self.log_message("Mikro Companion loaded; 16-pad banking, view-based recording")
 
@@ -231,7 +243,8 @@ class MikroCompanion(ControlSurface):
             else:
                 getattr(self._pattern, action)(*args)
         except Exception as error:
-            self._pattern.close()
+            if action not in ('duplicate', 'erase'):
+                self._pattern.close()
             self.log_message("Mikro Companion Pattern unavailable: {}".format(error))
         self._state_dirty = True
         self.update_display()
@@ -406,7 +419,11 @@ class MikroCompanion(ControlSurface):
 
     def _edit(self, command):
         try:
-            changed = self._editor.execute(command)
+            if command == 9 and self._selection.enabled:
+                changed = self._selection.can_erase()
+                self._selection.erase()
+            else:
+                changed = self._editor.execute(command)
             if changed and self._selection.enabled and command in (1, 2, 13, 14, 15, 16):
                 self._selection.edited()
             if command in (1, 2):
@@ -450,6 +467,12 @@ class MikroCompanion(ControlSurface):
     def _scale_turn(self, value):
         if value and self._keyboard.enabled:
             self._keyboard.adjust(self.song(), value if value < 64 else value - 128)
+            self._layout_changed()
+            self.update_display()
+
+    def _scale_octave(self, value):
+        if value and self._keyboard.enabled:
+            self._keyboard.octave(self.song(), value if value < 64 else value - 128)
             self._layout_changed()
             self.update_display()
 
@@ -840,11 +863,23 @@ class MikroCompanion(ControlSurface):
                 self._rewire()
             self._follow_recording_clip()
             song = self.song()
+            if now >= self._ownership_at or song.view.selected_track != self._ownership_track:
+                self._ownership_at = now + 0.5
+                self._ownership_track = song.view.selected_track
+                ownership = inspect_song(song)
+                if ownership != self._ownership_state:
+                    self.log_message('Mikro Companion NI ownership: selected={}, instances={}, uncertain={}'.format(*ownership))
+                self._ownership_state = ownership
+            native, instances, uncertain = self._ownership_state
+            ownership_packet = 'MO1 {} {} {} {} ready'.format(self._feedback_epoch, int(native), instances, int(uncertain))
+            self._socket.sendto(ownership_packet.encode('ascii'), ('127.0.0.1', 39473))
             sampled = time.perf_counter()
             packet = "MR2 {} {:.6f} {:.6f} {} {:.9f} ready".format(self._feedback_epoch,
                 float(getattr(song, "tempo", 120.0)), float(getattr(song, "current_song_time", 0.0)), int(song.is_playing), sampled)
             self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
             packet = self._pattern.packet(self._feedback_epoch)
+            if self._pattern.enabled:
+                self._socket.sendto(self._pattern.edit_packet(self._feedback_epoch).encode('ascii'), ('127.0.0.1', 39473))
             if packet != self._last_pattern_packet or self._state_dirty or now - self._last_sent >= 0.5:
                 self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
                 self._last_pattern_packet = packet
@@ -928,6 +963,8 @@ class MikroCompanion(ControlSurface):
             if hasattr(self.song(), "can_undo"):
                 try:
                     edit_mask = self._editor.availability(now)
+                    if self._selection.enabled and self._selection.can_erase():
+                        edit_mask |= 1 << 8  # Shift + pad 9: Clear selected notes.
                     history = (bool(self.song().can_undo), bool(self.song().can_redo))
                     if self._editor.shift and history != self._last_history:
                         self.log_message("Mikro Companion history state: undo={}; redo={}".format(*history))
@@ -954,9 +991,10 @@ class MikroCompanion(ControlSurface):
                 notes = normal and getattr(self._track, "has_midi_input", True)
                 packet = "MN1 {} {} {} ready".format(self._feedback_epoch, int(notes), int(normal))
                 self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
-                state = "MC7 {} {} {} {} {} {} {} {} {} {} {} {} ready".format(
+                state = "MC8 {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} ready".format(
                     mask, int(song.is_playing), int(self._recording_active()), color, base, self._feedback_epoch, int(song.metronome), int(song.view.follow_song),
-                    self._selected_note(), int(getattr(mix, "mute", False)) if mix is not None else 0, int(getattr(mix, "solo", False)) if mix is not None else 0, int(mix is not None)
+                    self._selected_note(), int(getattr(mix, "mute", False)) if mix is not None else 0, int(getattr(mix, "solo", False)) if mix is not None else 0, int(mix is not None),
+                    int(native), instances, int(uncertain)
                 )
                 if hasattr(self._track, "name"):
                     name = ''.join(c for c in self._track.name if c.isprintable())[:64] or 'Track'
@@ -1004,8 +1042,16 @@ class MikroCompanion(ControlSurface):
             self._layout_dirty = True
 
     def disconnect(self):
-        self._pattern.close()
-        self._clip_activity.disconnect()
-        self._remove_listeners()
-        self._socket.close()
-        super(MikroCompanion, self).disconnect()
+        try:
+            self._pattern.close()
+        finally:
+            try:
+                self._clip_activity.disconnect()
+            finally:
+                try:
+                    self._remove_listeners()
+                finally:
+                    try:
+                        self._socket.close()
+                    finally:
+                        super(MikroCompanion, self).disconnect()

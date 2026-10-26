@@ -2,6 +2,28 @@
 
 All notable changes are documented here, using [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-10-26
+
+### Added
+
+- Experimental controller handoff between the Live integration and Maschine VSTs, enabled with `EnableNativeHandoff`. Select between multiple Maschine instances manually in their Controller menus.
+- Duplicate and Erase for the selected Session clip in Pattern; Shift + pad 9 (Clear) deletes selected notes in Events.
+- Shift + encoder on Keyboard's Root Note page moves the pad range by octaves while preserving the root and scale.
+- Plug-in: encoder press resets the selected parameter when Live provides a default; the Smart Strip adjusts it directly and displays its position, including a lit left LED at minimum.
+
+### Changed
+
+- In Plug-in mode, Shift + encoder changes parameters five times faster instead of providing fine adjustment.
+- Reduced Step display overhead for dense MIDI clips.
+
+### Fixed
+
+- Temporary MIDI port creation and opening errors are retried automatically; Resume starts a new retry cycle if they persist.
+- Fixed incomplete Live script cleanup after a disconnect error.
+- Companion shutdown continues releasing resources after a cleanup error, including stopping the Note Repeat thread if note release fails.
+- Reload Config reports when changed connection settings require a companion restart.
+- Held notes are no longer cut short when recording starts after the count-in with Note Repeat and Arp off.
+
 ## [0.3.0] - 2026-10-24
 
 ### Added

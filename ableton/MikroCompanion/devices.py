@@ -83,7 +83,7 @@ class DeviceControl:
             self.parameter = items[index]
             self._positions[self.device] = self.parameter
 
-    def turn(self, delta, fine=False):
+    def turn(self, delta, fast=False):
         if not self.enabled or not delta:
             return
         self.sync()
@@ -93,11 +93,52 @@ class DeviceControl:
         low, high, current = float(p.min), float(p.max), float(p.value)
         if not all(math.isfinite(v) for v in (low, high, current)) or high <= low:
             return
+        delta *= 5 if fast else 1
         if getattr(p, "is_quantized", False):
             value = round(current) + delta
         else:
-            value = current + delta * (high - low) / (1270 if fine else 127)
+            value = current + delta * (high - low) / 127
         p.value = max(low, min(high, value))
+
+    def reset(self):
+        if not self.enabled:
+            return
+        self.sync()
+        p = self.parameter
+        if p is None or getattr(p, "is_quantized", False):
+            return
+        try:
+            default = getattr(p, "default_value", None)
+        except (AttributeError, RuntimeError):
+            return
+        if default is not None:
+            low, high, value = float(p.min), float(p.max), float(default)
+            if all(math.isfinite(v) for v in (low, high, value)) and high >= low:
+                p.value = max(low, min(high, value))
+
+    def strip(self, position):
+        if not self.enabled or not 0 <= position <= 127:
+            return
+        self.sync()
+        p = self.parameter
+        if p is None:
+            return
+        low, high = float(p.min), float(p.max)
+        if not all(math.isfinite(v) for v in (low, high)) or high <= low:
+            return
+        value = low + position * (high - low) / 127
+        if getattr(p, "is_quantized", False):
+            value = round(value)
+        p.value = max(low, min(high, value))
+
+    def strip_position(self):
+        p = self.parameter
+        if p is None:
+            return -1
+        low, high, value = float(p.min), float(p.max), float(p.value)
+        if not all(math.isfinite(v) for v in (low, high, value)) or high <= low:
+            return -1
+        return max(0, min(127, round((value - low) * 127 / (high - low))))
 
     @staticmethod
     def _text(value, limit):
@@ -107,14 +148,14 @@ class DeviceControl:
     def packet(self, epoch):
         if not self.enabled:
             available = bool(getattr(self.song.view.selected_track, "devices", ()))
-            return "MDEV1 {} {} 0 0 0 0 0 - - - ready".format(epoch, int(available))
+            return "MDEV2 {} {} 0 0 0 0 0 - - - -1 ready".format(epoch, int(available))
         self.sync()
         left, right = self.neighbors()
         previous, following = self.neighbors(True)
         device = getattr(self.device, "name", "No devices")
         parameter = getattr(self.parameter, "name", "No parameters")
         value = str(self.parameter) if self.parameter is not None else ""
-        return "MDEV1 {} {} {} {} {} {} {} {} {} {} ready".format(
+        return "MDEV2 {} {} {} {} {} {} {} {} {} {} {} ready".format(
             epoch, int(self.device is not None), int(self.enabled),
             int(left), int(right), int(previous), int(following),
-            self._text(device, 40), self._text(parameter, 40), self._text(value, 32))
+            self._text(device, 40), self._text(parameter, 40), self._text(value, 32), self.strip_position())

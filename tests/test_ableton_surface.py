@@ -26,8 +26,13 @@ class BaseSurface:
     def application(self):
         return self._application
 
+    @contextlib.contextmanager
     def component_guard(self):
-        return contextlib.nullcontext()
+        control_context.append(self)
+        try:
+            yield
+        finally:
+            control_context.pop()
 
     def log_message(self, message):
         self.messages.append(message)
@@ -48,9 +53,13 @@ class BaseSurface:
         pass
 
 
+control_context = []
+
+
 class Button:
     def __init__(self, *args):
-        pass
+        if not control_context:
+            raise RuntimeError("Control created outside component_guard")
 
     def add_value_listener(self, callback):
         pass
@@ -105,6 +114,43 @@ class LiveNode:
 
 
 class SurfaceTests(unittest.TestCase):
+    def test_disconnect_releases_remaining_resources_after_cleanup_error(self):
+        for failing in ("pattern", "activity", "listeners", "socket"):
+            with self.subTest(failing=failing):
+                surface, connection = self.make_surface(self.song_with_track())
+                actions = {"pattern": Mock(), "activity": Mock(),
+                           "listeners": Mock(), "socket": Mock()}
+                actions[failing].side_effect = RuntimeError("deleted handle")
+                surface._pattern.close = actions["pattern"]
+                surface._clip_activity.disconnect = actions["activity"]
+                surface._remove_listeners = actions["listeners"]
+                connection.close = actions["socket"]
+                with patch.object(BaseSurface, "disconnect") as base_disconnect:
+                    with self.assertRaisesRegex(RuntimeError, "deleted handle"):
+                        surface.disconnect()
+                    for action in actions.values():
+                        action.assert_called_once_with()
+                    base_disconnect.assert_called_once_with()
+
+    def test_track_and_ownership_share_one_packet_on_each_track_change(self):
+        song = self.song_with_track()
+        first = song.view.selected_track
+        second = LiveNode(color=0xFF0000, devices=[])
+        song.tracks.append(second)
+        surface, connection = self.make_surface(song)
+        with patch.object(surface_module, "inspect_song", side_effect=[(False, 1, False), (True, 1, False), (False, 1, False)]):
+            for now, track, expected in ((10, first, ["0", "1", "0"]),
+                                         (10.1, second, ["1", "1", "0"]),
+                                         (10.2, first, ["0", "1", "0"])):
+                song.view.selected_track = track
+                surface._layout_changed()
+                with patch.object(surface_module.time, "monotonic", return_value=now):
+                    surface.update_display()
+                packet = connection.sendto.call_args.args[0].decode("ascii").split()
+                self.assertEqual(packet[0], "MC8")
+                self.assertEqual(int(packet[6]), surface._feedback_epoch)
+                self.assertEqual(packet[13:16], expected)
+
     def test_track_display_name_follows_unicode_rename(self):
         song = self.song_with_track()
         song.view.selected_track.name = 'Analog'
@@ -148,7 +194,7 @@ class SurfaceTests(unittest.TestCase):
         return surface, fake_socket
 
     def song_with_track(self, color=0x0000FF):
-        track = LiveNode(color=color, arm=False, implicit_arm=False, mute=False, solo=False)
+        track = LiveNode(color=color, arm=False, implicit_arm=False, mute=False, solo=False, devices=[])
         return LiveNode(view=LiveNode(selected_track=track, follow_song=False), is_playing=False,
                         session_record=False, session_record_status=0, record_mode=False, metronome=False, tracks=[track])
 
@@ -384,6 +430,10 @@ class SurfaceTests(unittest.TestCase):
         surface._keyboard_mode(127)
         surface._scale_turn(1)
         self.assertEqual(song.root_note, 1)
+        surface._scale_octave(1)
+        self.assertEqual((song.root_note, surface._keyboard.start(song, surface._track)), (1, 49))
+        surface._scale_octave(127)
+        self.assertEqual((song.root_note, surface._keyboard.start(song, surface._track)), (1, 37))
         with patch.object(surface._keyboard, "turn") as turn:
             surface._keyboard_scale_turn(1)
             turn.assert_called_with(song, 1)
@@ -578,12 +628,12 @@ class SurfaceTests(unittest.TestCase):
         surface._follow(0)
         self.assertTrue(song.view.follow_song)
         surface.update_display()
-        self.assertTrue(connection.sendto.call_args.args[0].endswith(b" 0 1 -1 0 0 1 ready"))
+        self.assertTrue(connection.sendto.call_args.args[0].endswith(b" 0 1 -1 0 0 1 0 0 0 ready"))
         song.view.follow_song = False
         for callback in song.view.callbacks["follow_song"]:
             callback()
         surface.update_display()
-        self.assertTrue(connection.sendto.call_args.args[0].endswith(b" 0 0 -1 0 0 1 ready"))
+        self.assertTrue(connection.sendto.call_args.args[0].endswith(b" 0 0 -1 0 0 1 0 0 0 ready"))
 
     def test_tap_and_metronome(self):
         song = self.song_with_track()
@@ -598,11 +648,11 @@ class SurfaceTests(unittest.TestCase):
         surface._metronome(0)
         self.assertTrue(song.metronome)
         surface.update_display()
-        self.assertTrue(connection.sendto.call_args.args[0].endswith(b" 1 0 -1 0 0 1 ready"))
+        self.assertTrue(connection.sendto.call_args.args[0].endswith(b" 1 0 -1 0 0 1 0 0 0 ready"))
         song.metronome = False
         surface._state_changed()
         surface.update_display()
-        self.assertTrue(connection.sendto.call_args.args[0].endswith(b" 0 0 -1 0 0 1 ready"))
+        self.assertTrue(connection.sendto.call_args.args[0].endswith(b" 0 0 -1 0 0 1 0 0 0 ready"))
 
     def test_deleted_track_does_not_stop_heartbeat(self):
         song = self.song_with_track()
@@ -610,14 +660,14 @@ class SurfaceTests(unittest.TestCase):
         surface, connection = self.make_surface(song)
         with patch.object(surface_module.time, "monotonic", return_value=10):
             surface.update_display()
-        self.assertEqual(connection.sendto.call_args.args[0], "MC7 65535 0 0 11 36 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+        self.assertEqual(connection.sendto.call_args.args[0], "MC8 65535 0 0 11 36 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
         first.deleted = True
-        song.view.selected_track = LiveNode(color=0xFF0000)
+        song.view.selected_track = LiveNode(color=0xFF0000, devices=[])
         song.tracks = [song.view.selected_track]
         surface._layout_changed()
         with patch.object(surface_module.time, "monotonic", return_value=11):
             surface.update_display()
-        self.assertEqual(connection.sendto.call_args.args[0], "MC7 65535 0 0 1 36 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+        self.assertEqual(connection.sendto.call_args.args[0], "MC8 65535 0 0 1 36 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
         self.assertIsNone(surface._last_error)
         self.assertFalse(surface._layout_dirty)
 
@@ -649,7 +699,7 @@ class SurfaceTests(unittest.TestCase):
         self.assertTrue(surface._devices.enabled)
         self.assertTrue(surface._keyboard.enabled)
         self.assertFalse(surface._mixer.enabled)
-        self.assertTrue(any(call.args[0].startswith(b"MDEV1 ") for call in connection.sendto.call_args_list))
+        self.assertTrue(any(call.args[0].startswith(b"MDEV2 ") for call in connection.sendto.call_args_list))
         surface._device_action("toggle")
         self.assertFalse(surface._devices.enabled)
         self.assertTrue(surface._mixer.enabled)
@@ -657,6 +707,28 @@ class SurfaceTests(unittest.TestCase):
         surface._pad_mode(127)
         self.assertFalse(surface._devices.enabled)
         surface.disconnect()
+
+    def test_clear_pad_routes_only_to_events_selection(self):
+        surface, connection = self.make_surface(self.song_with_track())
+        surface._selection.enabled = True
+        surface._selection.can_erase = Mock(return_value=True)
+        surface._selection.erase = Mock()
+        surface._editor.execute = Mock(return_value=False)
+        surface._edit(9)
+        surface._selection.erase.assert_called_once_with()
+        surface._editor.execute.assert_not_called()
+        surface._selection.enabled = False
+        surface._edit(9)
+        self.assertEqual(surface._selection.erase.call_count, 1)
+        surface._editor.execute.assert_called_once_with(9)
+
+    def test_rejected_clip_edit_keeps_pattern_mode(self):
+        surface, connection = self.make_surface(self.song_with_track())
+        surface._pattern.enabled = True
+        surface._pattern.duplicate = Mock(side_effect=RuntimeError('clip cannot be duplicated'))
+        surface._pattern_action('duplicate')
+        self.assertTrue(surface._pattern.enabled)
+        self.assertTrue(any('clip cannot be duplicated' in message for message in surface.messages))
 
     def test_temporary_api_error_retries_without_log_flood(self):
         surface, connection = self.make_surface(self.song_with_track())
@@ -671,8 +743,11 @@ class SurfaceTests(unittest.TestCase):
             surface.update_display()
         self.assertIsNone(surface._last_error)
         self.assertTrue(any("state recovered" in m for m in surface.messages))
-        self.assertEqual(connection.sendto.call_count, 6)
-        self.assertTrue(connection.sendto.call_args_list[0].args[0].startswith(b"MR2 "))
+        packets = [call.args[0] for call in connection.sendto.call_args_list]
+        self.assertEqual(sum(packet.startswith(b'MO1 ') for packet in packets), 1)
+        legacy = [packet for packet in packets if not packet.startswith(b'MO1 ')]
+        self.assertEqual(len(legacy), 6)
+        self.assertTrue(legacy[0].startswith(b'MR2 '))
 
     def test_track_color_change_without_instrument_inspection(self):
         song = self.song_with_track(0xFF0000)
@@ -680,19 +755,19 @@ class SurfaceTests(unittest.TestCase):
         surface, connection = self.make_surface(song)
         with patch.object(surface_module.time, "monotonic", return_value=10):
             surface.update_display()
-        self.assertEqual(connection.sendto.call_args.args[0], "MC7 65535 0 0 1 36 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+        self.assertEqual(connection.sendto.call_args.args[0], "MC8 65535 0 0 1 36 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
         first.color = 0x00FF00
         first.callbacks["color"][0]()
         with patch.object(surface_module.time, "monotonic", return_value=10.1):
             surface.update_display()
-        self.assertEqual(connection.sendto.call_args.args[0], "MC7 65535 0 0 7 36 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
-        second = LiveNode(color=0x0000FF)
+        self.assertEqual(connection.sendto.call_args.args[0], "MC8 65535 0 0 7 36 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
+        second = LiveNode(color=0x0000FF, devices=[])
         song.tracks.append(second)
         song.view.selected_track = second
         song.view.callbacks["selected_track"][0]()
         with patch.object(surface_module.time, "monotonic", return_value=10.2):
             surface.update_display()
-        self.assertEqual(connection.sendto.call_args.args[0], "MC7 65535 0 0 11 36 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+        self.assertEqual(connection.sendto.call_args.args[0], "MC8 65535 0 0 11 36 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
         self.assertEqual(first.callbacks["color"], [])
         self.assertFalse(first.arm)
         self.assertFalse(first.implicit_arm)
@@ -841,7 +916,7 @@ class SurfaceTests(unittest.TestCase):
         surface, connection = self.make_surface(song)
         with patch.object(surface_module.time, "monotonic", return_value=10):
             surface.update_display()
-        self.assertEqual(connection.sendto.call_args.args[0], "MC7 65535 0 1 11 36 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+        self.assertEqual(connection.sendto.call_args.args[0], "MC8 65535 0 1 11 36 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
 
     def test_arrangement_rec_preserves_position_playback_and_arm(self):
         for playing in [False, True]:
@@ -887,16 +962,16 @@ class SurfaceTests(unittest.TestCase):
         surface, connection = self.make_surface(song)
         with patch.object(surface_module.time, "monotonic", return_value=10):
             surface.update_display()
-            self.assertEqual(connection.sendto.call_args.args[0], "MC7 65535 0 1 11 36 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+            self.assertEqual(connection.sendto.call_args.args[0], "MC8 65535 0 1 11 36 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
             view = surface.application().view
             view.focused_document_view = "Arranger"
             view.callbacks["focused_document_view"][0]()
             surface.update_display()
-            self.assertEqual(connection.sendto.call_args.args[0], "MC7 65535 0 0 11 36 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+            self.assertEqual(connection.sendto.call_args.args[0], "MC8 65535 0 0 11 36 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
             song.record_mode = True
             song.callbacks["record_mode"][0]()
             surface.update_display()
-            self.assertEqual(connection.sendto.call_args.args[0], "MC7 65535 0 1 11 36 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+            self.assertEqual(connection.sendto.call_args.args[0], "MC8 65535 0 1 11 36 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
         surface.disconnect()
         self.assertEqual(view.callbacks["focused_document_view"], [])
 
@@ -908,20 +983,20 @@ class SurfaceTests(unittest.TestCase):
         surface, connection = self.make_surface(song)
         surface._bank_up(127)
         self.assertEqual(rack.view.drum_pads_scroll_position, 13)
-        self.assertEqual(connection.sendto.call_args.args[0], "MC7 65535 0 0 11 52 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+        self.assertEqual(connection.sendto.call_args.args[0], "MC8 65535 0 0 11 52 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
         surface._bank_up(0)
         self.assertEqual(rack.view.drum_pads_scroll_position, 13)
         rack.view.drum_pads_scroll_position = 2
         rack.view.callbacks["drum_pads_scroll_position"][0]()
         surface.update_display()
-        self.assertEqual(connection.sendto.call_args.args[0], "MC7 65535 0 0 11 8 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+        self.assertEqual(connection.sendto.call_args.args[0], "MC8 65535 0 0 11 8 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
         second_rack = LiveNode(can_have_drum_pads=True, view=LiveNode(drum_pads_scroll_position=20))
         second = LiveNode(color=0xFF0000, devices=[second_rack])
         song.tracks.append(second)
         song.view.selected_track = second
         surface._layout_changed()
         surface.update_display()
-        self.assertEqual(connection.sendto.call_args.args[0], "MC7 65535 0 0 1 80 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+        self.assertEqual(connection.sendto.call_args.args[0], "MC8 65535 0 0 1 80 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
         self.assertEqual(rack.view.callbacks["drum_pads_scroll_position"], [])
 
     def test_bank_limits_and_generic_track_memory(self):
@@ -934,7 +1009,7 @@ class SurfaceTests(unittest.TestCase):
         for _ in range(20):
             surface._bank_up(127)
         self.assertEqual(surface._base_note(), 112)
-        second = LiveNode(color=0xFF0000)
+        second = LiveNode(color=0xFF0000, devices=[])
         song.tracks.append(second)
         song.view.selected_track = second
         surface._layout_changed()
@@ -969,7 +1044,7 @@ class SurfaceTests(unittest.TestCase):
         surface.update_display()
         self.assertEqual(surface._base_note(), 36)
         self.assertIsNone(surface._last_error)
-        self.assertEqual(connection.sendto.call_args.args[0], "MC7 65535 0 0 11 36 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+        self.assertEqual(connection.sendto.call_args.args[0], "MC8 65535 0 0 11 36 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
 
     def test_drum_rack_inside_instrument_rack_scrolls_visible_grid(self):
         song = self.song_with_track()
@@ -985,7 +1060,7 @@ class SurfaceTests(unittest.TestCase):
         surface._bank_up(127)
         self.assertIs(surface._rack, drum)
         self.assertEqual(drum.view.drum_pads_scroll_position, 13)
-        self.assertEqual(connection.sendto.call_args.args[0], "MC7 65535 0 0 11 52 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+        self.assertEqual(connection.sendto.call_args.args[0], "MC8 65535 0 0 11 52 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
         drum.view.drum_pads_scroll_position = 5
         drum.view.callbacks["drum_pads_scroll_position"][0]()
         surface.update_display()
@@ -1035,17 +1110,17 @@ class SurfaceTests(unittest.TestCase):
         song.view.selected_track.devices = [rack]
         surface, connection = self.make_surface(song)
         surface.update_display()
-        self.assertEqual(connection.sendto.call_args.args[0], "MC7 32785 0 0 11 36 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+        self.assertEqual(connection.sendto.call_args.args[0], "MC8 32785 0 0 11 36 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
         pads[40].chains = []
         pads[40].callbacks["chains"][0]()
         surface.update_display()
-        self.assertEqual(connection.sendto.call_args.args[0], "MC7 32769 0 0 11 36 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+        self.assertEqual(connection.sendto.call_args.args[0], "MC8 32769 0 0 11 36 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
         surface._bank_up(127)
-        self.assertEqual(connection.sendto.call_args.args[0], "MC7 1 0 0 11 52 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+        self.assertEqual(connection.sendto.call_args.args[0], "MC8 1 0 0 11 52 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
         pads[52].chains = []
         pads[52].callbacks["chains"][0]()
         surface.update_display()
-        self.assertEqual(connection.sendto.call_args.args[0], "MC7 0 0 0 11 52 {} 0 0 -1 0 0 1 ready".format(surface._feedback_epoch).encode("ascii"))
+        self.assertEqual(connection.sendto.call_args.args[0], "MC8 0 0 0 11 52 {} 0 0 -1 0 0 1 0 0 0 ready".format(surface._feedback_epoch).encode("ascii"))
         surface.disconnect()
         self.assertEqual(pads[52].callbacks["chains"], [])
 
