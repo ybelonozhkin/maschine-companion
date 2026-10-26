@@ -38,7 +38,7 @@ See [launcher controls and the tray menu](launcher/README.md) and the [configura
    powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-AbletonScript.ps1 -UserLibrary "D:\Music\Ableton\User Library"
    ```
 
-5. Run `Start-Companion.cmd`, then open Live. This order makes the companion's MIDI port available when Live starts.
+5. Run `Start-Companion.cmd`, then open Live. This order makes the companion's MIDI port available when Live starts. Temporary MIDI startup errors are retried automatically. If the tray status asks you to use **Resume**, fix the reported problem and choose **Resume** to retry.
 6. Open Live's MIDI preferences and set one Control Surface row to:
 
    | Control Surface | Input | Output |

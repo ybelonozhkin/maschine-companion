@@ -4,6 +4,52 @@ using System.Runtime.InteropServices;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
+// Keep acquisition retries separate from input/HID errors and live MIDI output.
+sealed class MidiConnectionRetry {
+ readonly Action create;readonly Func<bool> open,ready;readonly Action<string> log;
+ long nextAttempt;int failures;string error="";
+ public bool RetryAvailable {get;private set;}
+ public string Error {get{return error;}}
+ public MidiConnectionRetry(Action createPort,Func<bool> openPort,Func<bool> isReady,Action<string> logger){create=createPort;open=openPort;ready=isReady;log=logger;}
+ public void Tick(long now){
+  if(ready() || RetryAvailable || now<nextAttempt)return;
+  try{
+   create();
+   if(!open()){nextAttempt=now+500;return;}
+   if(!ready())throw new InvalidOperationException("MIDI output did not become ready");
+   if(error.Length>0)log("Ableton MIDI connection restored");
+   error="";failures=0;nextAttempt=0;
+  }catch(Exception ex){
+   if(error!=ex.Message)log("Ableton MIDI setup: "+ex.Message);
+   error=ex.Message;failures++;
+   RetryAvailable=failures>=6 || ex is DllNotFoundException || ex is EntryPointNotFoundException || ex is BadImageFormatException;
+   nextAttempt=now+Math.Min(5000,500*(1<<Math.Min(4,failures-1)));
+   if(RetryAvailable)log("Automatic MIDI retries stopped; use Resume to retry");
+  }
+ }
+ public void Resume(long now){failures=0;RetryAvailable=false;nextAttempt=now;}
+}
+
+// Publish a WinMM handle only after initialization. Failed closes retain the
+// handle for cleanup before another open, rather than leaking it on each retry.
+sealed class MidiOutputSession {
+ readonly Func<uint,IntPtr> open;readonly Func<IntPtr,uint,uint> send;readonly Func<IntPtr,uint> close;
+ IntPtr handle;public bool Ready {get;private set;}
+ public MidiOutputSession(Func<uint,IntPtr> openPort,Func<IntPtr,uint,uint> sendMessage,Func<IntPtr,uint> closePort){open=openPort;send=sendMessage;close=closePort;}
+ public void Open(uint id){
+  if(Ready)return;
+  Close();handle=open(id);
+  if(handle==IntPtr.Zero)throw new InvalidOperationException("MIDI output returned an empty handle");
+  try{
+   uint result=send(handle,0xb0u|(123u<<8));
+   if(result!=0)throw new InvalidOperationException("MIDI output initialization error="+result);
+   Ready=true;
+  }catch(Exception error){try{Close();}catch(Exception cleanup){throw new AggregateException("MIDI initialization failed: "+error.Message+"; cleanup: "+cleanup.Message,error,cleanup);}throw;}
+ }
+ public uint Send(uint message){if(!Ready)throw new InvalidOperationException("MIDI output is not ready");return send(handle,message);}
+ public void Close(){Ready=false;if(handle==IntPtr.Zero)return;uint result=close(handle);if(result!=0)throw new InvalidOperationException("MIDI output close error="+result);handle=IntPtr.Zero;}
+}
+
 // Windows MIDI Services creates the cable; WinMM sends short messages directly.
 sealed class NativeMidi : IDisposable {
  [DllImport("CompanionMidi.dll",CallingConvention=CallingConvention.Cdecl,CharSet=CharSet.Unicode)] static extern int MC_Create(StringBuilder error,int capacity);
@@ -18,18 +64,20 @@ sealed class NativeMidi : IDisposable {
  [DllImport("winmm.dll")] static extern uint midiOutOpen(out IntPtr handle,uint id,IntPtr callback,UIntPtr instance,uint flags);
  [DllImport("winmm.dll")] static extern uint midiOutShortMsg(IntPtr handle,uint message);
  [DllImport("winmm.dll")] static extern uint midiOutClose(IntPtr handle);
- IntPtr output;bool created;readonly bool[] notes=new bool[128];int bend=8192,modulation;
- public bool Ready {get{return output!=IntPtr.Zero;}}
+ readonly MidiOutputSession output=new MidiOutputSession(OpenOutput,midiOutShortMsg,midiOutClose);
+ bool created;readonly bool[] notes=new bool[128];int bend=8192,modulation;
+ static IntPtr OpenOutput(uint id){IntPtr handle;uint result=midiOutOpen(out handle,id,IntPtr.Zero,UIntPtr.Zero,0);if(result!=0)throw new Exception("MIDI output open error="+result);return handle;}
+ public bool Ready {get{return output.Ready;}}
  public void Create(){if(created)return;var error=new StringBuilder(512);int result=MC_Create(error,error.Capacity);if(result!=0)throw new Exception("Windows MIDI port: "+error+" ("+result+")");created=true;}
  public bool TryOpen(){
   if(Ready)return true;if(!created)return false;
+  output.Close();
   for(uint i=0;i<midiOutGetNumDevs();i++) {Caps c;if(midiOutGetDevCapsW((UIntPtr)i,out c,(uint)Marshal.SizeOf(typeof(Caps)))==0 && c.name=="Mikro Companion Send"){
-   uint result=midiOutOpen(out output,i,IntPtr.Zero,UIntPtr.Zero,0);if(result!=0)throw new Exception("MIDI output open error="+result);
-   Send(0xb0,123,0);return true;
+   output.Open(i);return true;
   }}return false;
  }
  readonly object outputGate=new object();
- void Send(int status,int a,int b){lock(outputGate){if(!Ready)throw new InvalidOperationException("MIDI output is not ready");uint r=midiOutShortMsg(output,(uint)(status|(a<<8)|(b<<16)));if(r!=0)throw new Exception("MIDI output send error="+r);}}
+ void Send(int status,int a,int b){lock(outputGate){uint r=output.Send((uint)(status|(a<<8)|(b<<16)));if(r!=0)throw new Exception("MIDI output send error="+r);}}
  public void Note(int note,int velocity,bool down){if(note<0||note>127||velocity<0||velocity>127)throw new ArgumentOutOfRangeException();Send(down?0x90:0x80,note,down?velocity:0);notes[note]=down;}
  public void PitchBend(int value){if(value<0||value>16383)throw new ArgumentOutOfRangeException("value");if(value!=bend){Send(0xe0,value&127,value>>7);bend=value;}}
  public void Modulation(int value){if(value<0||value>127)throw new ArgumentOutOfRangeException("value");if(value!=modulation){Send(0xb0,1,value);modulation=value;}}
@@ -76,7 +124,7 @@ sealed class NativeMidi : IDisposable {
  public void SelectNote(int note){Send(0xb0,28,note);}
  public void Bank(int direction){int cc=direction==0?36:direction<0?23:24;Send(0xb0,cc,127);Send(0xb0,cc,0);}
  public void ReleaseAll(){Exception error=null;for(int i=0;i<128;i++)if(notes[i])try{Note(i,0,false);}catch(Exception ex){error=ex;}try{ResetExpression();}catch(Exception ex){error=ex;}if(error!=null)throw error;}
- public void Dispose(){try{if(Ready)ReleaseAll();}finally{if(output!=IntPtr.Zero){midiOutClose(output);output=IntPtr.Zero;}if(created){int result=MC_Close();if(result!=0)throw new Exception("Windows MIDI port cleanup error="+result);created=false;}}}
+ public void Dispose(){try{if(Ready)ReleaseAll();}finally{try{output.Close();}finally{if(created){int result=MC_Close();if(result!=0)throw new Exception("Windows MIDI port cleanup error="+result);created=false;}}}}
 }
 
 // A separate input client observes strikes; it never sends or forwards MIDI.

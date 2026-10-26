@@ -34,3 +34,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Mikro input tests failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Note repeat test compilation failed' }
 & .\bin\NoteRepeatTests.exe
 if ($LASTEXITCODE -ne 0) { throw 'Note repeat tests failed' }
+
+& "$framework\csc.exe" /nologo /nowarn:0649 /target:exe /platform:x64 /out:bin\MidiConnectionTests.exe src\NativeMidi.cs src\MikroInput.cs tests\MidiConnectionTests.cs
+if ($LASTEXITCODE -ne 0) { throw 'MIDI connection test compilation failed' }
+& .\bin\MidiConnectionTests.exe
+if ($LASTEXITCODE -ne 0) { throw 'MIDI connection tests failed' }

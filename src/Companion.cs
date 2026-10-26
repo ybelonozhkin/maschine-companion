@@ -326,7 +326,7 @@ class Companion : Form {
  static string ProcessesLabel(string details){int pid=details.IndexOf(" PID ",StringComparison.Ordinal);return pid<0?details:details.Substring(0,pid);}
  void UpdateStatus(long now) {
   bool paused=pause.Active(DateTimeOffset.UtcNow) || ableton!=null && ableton.PausedForMidiMode;
-  resumeItem.Enabled=paused;manualPauseItem.Visible=!paused;pauseItem.Visible=!paused;
+  resumeItem.Enabled=paused || ableton!=null && ableton.MidiRetryAvailable;manualPauseItem.Visible=!paused;pauseItem.Visible=!paused;
   vegasItem.Enabled=vegasItem.Checked || settings.StandbyLed && !paused && !sessionLocked && !suspended && controllers.Count>0 && !abletonHost && !runningNow && !ledBlockedNow && now>=launchUntil;
   string next=sessionLocked?"Paused: Windows is locked or desktop unavailable":suspended?"Paused: computer is sleeping":pause.Active(DateTimeOffset.UtcNow)?(pause.Indefinite?"Paused until resumed":"Paused until "+pause.Until.Value.ToLocalTime().ToString("HH:mm")):controllers.Count==0?"Controller disconnected":abletonHost && ableton!=null?ableton.Status:dawBlockedNow?"Paused: "+dawDetails:runningNow?"Running: "+ProcessesLabel(blockDetails):ledBlockedNow?"Paused: "+blockDetails:now<launchUntil?"Waiting after launch request":"Ready: hold Maschine for "+(settings.HoldMs/1000.0).ToString("0.0",CultureInfo.InvariantCulture)+" s";
   if(next==status)return;status=next;statusItem.Text=next;tray.Text=next.Length>63?next.Substring(0,63):next;tray.Icon=runningNow?System.Drawing.SystemIcons.Information:System.Drawing.SystemIcons.Application;Log("status: "+next+(blockDetails.Length>0?"; "+blockDetails:""));
