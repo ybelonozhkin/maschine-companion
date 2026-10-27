@@ -2,6 +2,12 @@
 
 All notable changes are documented here, using [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-10-27
+
+### Changed
+
+- Split the Live integration into smaller modules for state handling, display output, browser interaction and MIDI control registration.
+
 ## [0.4.0] - 2026-10-26
 
 ### Added

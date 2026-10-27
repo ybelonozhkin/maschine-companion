@@ -1,12 +1,9 @@
 import socket
 import time
-import base64
 
 from _Framework.ControlSurface import ControlSurface
-from _Framework.ButtonElement import ButtonElement
-from _Framework.InputControlElement import MIDI_CC_TYPE
 
-from .model import pad_color, next_pad_bank, numbered_track_name
+from .model import next_pad_bank
 from .activity import SamplerActivity
 from .clip_activity import ClipActivity
 from .keyboard import Keyboard
@@ -18,7 +15,8 @@ from .navigation import Navigation
 from .browser import Browser
 from .sequencer import Sequencer
 from .pattern import PatternGrid
-from .ownership import inspect_song
+from .controls import register_controls
+from .feedback import publish_state
 
 
 class MikroCompanion(ControlSurface):
@@ -77,120 +75,7 @@ class MikroCompanion(ControlSurface):
         self._feedback_epoch = int(time.monotonic() * 1000)
         self._activity_seen = False
         self._clip_activity = ClipActivity(self._pad_activity, self.log_message)
-        with self.component_guard():
-            self._play_button = ButtonElement(True, MIDI_CC_TYPE, 0, 20)
-            self._stop_button = ButtonElement(True, MIDI_CC_TYPE, 0, 21)
-            self._record_button = ButtonElement(True, MIDI_CC_TYPE, 0, 22)
-            self._play_button.add_value_listener(self._play)
-            self._stop_button.add_value_listener(self._stop)
-            self._record_button.add_value_listener(self._record)
-            self._bank_down_button = ButtonElement(True, MIDI_CC_TYPE, 0, 23)
-            self._bank_up_button = ButtonElement(True, MIDI_CC_TYPE, 0, 24)
-            self._bank_down_button.add_value_listener(self._bank_down)
-            self._bank_up_button.add_value_listener(self._bank_up)
-            self._tap_button = ButtonElement(True, MIDI_CC_TYPE, 0, 25)
-            self._metro_button = ButtonElement(True, MIDI_CC_TYPE, 0, 26)
-            self._tap_button.add_value_listener(self._tap)
-            self._metro_button.add_value_listener(self._metronome)
-            self._follow_button = ButtonElement(True, MIDI_CC_TYPE, 0, 27)
-            self._follow_button.add_value_listener(self._follow)
-            self._select_button = ButtonElement(True, MIDI_CC_TYPE, 0, 28)
-            self._mute_button = ButtonElement(True, MIDI_CC_TYPE, 0, 29)
-            self._solo_button = ButtonElement(True, MIDI_CC_TYPE, 0, 30)
-            self._select_button.add_value_listener(self._select_note)
-            self._mute_button.add_value_listener(self._mute)
-            self._solo_button.add_value_listener(self._solo)
-            self._pad_mode_button = ButtonElement(True, MIDI_CC_TYPE, 0, 31)
-            self._keyboard_button = ButtonElement(True, MIDI_CC_TYPE, 0, 32)
-            self._scale_encoder = ButtonElement(False, MIDI_CC_TYPE, 0, 33)
-            self._scale_toggle_button = ButtonElement(True, MIDI_CC_TYPE, 0, 34)
-            self._pad_mode_button.add_value_listener(self._pad_mode)
-            self._keyboard_button.add_value_listener(self._keyboard_mode)
-            self._scale_encoder.add_value_listener(self._scale_turn)
-            self._scale_toggle_button.add_value_listener(self._scale_toggle)
-            self._reset_range_button = ButtonElement(True, MIDI_CC_TYPE, 0, 36)
-            self._reset_range_button.add_value_listener(self._reset_range)
-            self._edit_button = ButtonElement(False, MIDI_CC_TYPE, 0, 37)
-            self._shift_button = ButtonElement(True, MIDI_CC_TYPE, 0, 38)
-            self._edit_button.add_value_listener(self._edit)
-            self._shift_button.add_value_listener(self._editor.modifier)
-            self._events_button = ButtonElement(True, MIDI_CC_TYPE, 0, 39)
-            self._event_pad = ButtonElement(False, MIDI_CC_TYPE, 0, 40)
-            self._event_encoder = ButtonElement(False, MIDI_CC_TYPE, 0, 41)
-            self._event_range_encoder = ButtonElement(False, MIDI_CC_TYPE, 0, 42)
-            self._events_button.add_value_listener(lambda value: self._events_action("toggle") if value else None)
-            self._event_pad.add_value_listener(lambda pitch: self._events_action("pad", pitch))
-            self._event_encoder.add_value_listener(lambda value: self._events_action("turn", value if value < 64 else value - 128))
-            self._event_range_encoder.add_value_listener(lambda value: self._events_action("turn", value if value < 64 else value - 128, True))
-            self._restart_button = ButtonElement(True, MIDI_CC_TYPE, 0, 45)
-            self._loop_button = ButtonElement(True, MIDI_CC_TYPE, 0, 46)
-            self._erase_button = ButtonElement(True, MIDI_CC_TYPE, 0, 47)
-            self._restart_button.add_value_listener(self._restart)
-            self._loop_button.add_value_listener(self._loop)
-            self._erase_button.add_value_listener(lambda value: self._events_action("erase") if value else None)
-            self._volume_button = ButtonElement(True, MIDI_CC_TYPE, 0, 48)
-            self._volume_encoder = ButtonElement(False, MIDI_CC_TYPE, 0, 49)
-            self._track_left_button = ButtonElement(True, MIDI_CC_TYPE, 0, 50)
-            self._track_right_button = ButtonElement(True, MIDI_CC_TYPE, 0, 51)
-            self._volume_button.add_value_listener(lambda value: self._mixer_action("toggle") if value else None)
-            self._volume_encoder.add_value_listener(lambda value: self._mixer_action("turn", value if value < 64 else value - 128))
-            self._track_left_button.add_value_listener(lambda value: self._mixer_action("navigate", -1) if value else None)
-            self._track_right_button.add_value_listener(lambda value: self._mixer_action("navigate", 1) if value else None)
-
-
-
-
-        with self.component_guard():
-            for cc, action in ((52, lambda v: self._mixer_action("reset") if v else None),
-                               (53, lambda v: self._mixer_action("fine", v if v < 64 else v - 128)),
-                               (54, lambda v: self._mixer_action("toggle_tempo") if v else None),
-                               (55, lambda v: self._mixer_action("tempo_turn", v if v < 64 else v - 128)),
-                               (56, lambda v: self._mixer_action("tempo_turn", v if v < 64 else v - 128, True)),
-                               (57, lambda v: self._browser_action("toggle") if v else None),
-                               (58, lambda v: self._browser_action("turn", v if v < 64 else v - 128)),
-                               (59, lambda v: self._browser_action("press", 13) if v else None),
-                               (60, lambda v: self._browser_action("press", 37) if v else None),
-                               (61, lambda v: self._step_action("toggle") if v else None),
-                               (62, lambda v: self._step_action("pad", v)),
-                               (63, lambda v: self._step_action("duplicate") if v else None),
-                               (64, lambda v: self._step_action("navigate", v if v < 64 else v - 128)),
-                               (65, lambda v: self._pad_bank_turn(v)),
-                               (66, lambda v: self._keyboard_scale_turn(v)),
-                               (67, lambda v: self._browser_action("close") if v else None),
-                               (68, lambda v: self._browser_action("press", 49) if v else None),
-                               (69, lambda v: self._create_midi_track() if v else None),
-                               (70, lambda v: self._pattern_action("toggle") if v else None),
-                               (71, lambda v: self._pattern_action("pad", v)),
-                               (72, lambda v: self._pattern_action("navigate", v if v < 64 else v - 128)),
-                               (73, lambda v: self._pattern_action("navigate", v if v < 64 else v - 128, True)),
-                               (74, lambda v: self._pattern_action("toggle_scene") if v else None),
-                               (75, lambda v: self._grid_action("grid_hold", bool(v))),
-                               (76, lambda v: self._grid_action("grid_turn", v if v < 64 else v - 128)),
-                               (77, lambda v: self._step_select_turn(v)),
-                               (78, lambda v: self._scale_set(v)),
-                               (79, lambda v: self._step_select_reset() if v else None),
-                               (80, lambda v: self._device_action("toggle") if v else None),
-                               (81, lambda v: self._device_action("navigate", v if v < 64 else v - 128)),
-                               (82, lambda v: self._device_action("navigate", v if v < 64 else v - 128, True)),
-                               (83, lambda v: self._device_action("turn", v if v < 64 else v - 128)),
-                               (84, lambda v: self._device_action("turn", v if v < 64 else v - 128, True)),
-                               (85, lambda v: self._device_action("close") if v else None),
-                               (86, lambda v: self._navigation_action("toggle") if v else None),
-                               (87, lambda v: self._navigation_action("navigate", v if v < 64 else v - 128)),
-                               (88, lambda v: self._navigation_action("turn", v if v < 64 else v - 128)),
-                               (89, lambda v: self._navigation_action("turn", v if v < 64 else v - 128, True)),
-                               (90, lambda v: self._toggle_document_view() if v else None),
-                               (91, lambda v: self._scale_octave(v))):
-                button = ButtonElement(False, MIDI_CC_TYPE, 0, cc)
-                button.add_value_listener(action)
-                setattr(self, "_encoder_control_{}".format(cc), button)
-
-            self._pattern_edit = ButtonElement(False, MIDI_CC_TYPE, 0, 92)
-            self._pattern_edit.add_value_listener(lambda value: self._pattern_action('duplicate' if value == 1 else 'erase') if value in (1, 2) else None)
-            self._device_reset = ButtonElement(True, MIDI_CC_TYPE, 0, 93)
-            self._device_reset.add_value_listener(lambda value: self._device_action("reset") if value else None)
-            self._device_strip = ButtonElement(False, MIDI_CC_TYPE, 0, 94)
-            self._device_strip.add_value_listener(lambda value: self._device_action("strip", value))
+        register_controls(self)
 
         self.log_message("Mikro Companion loaded; 16-pad banking, view-based recording")
 
@@ -855,191 +740,7 @@ class MikroCompanion(ControlSurface):
 
     def update_display(self):
         super(MikroCompanion, self).update_display()
-        now = time.monotonic()
-        if now < self._retry_at:
-            return
-        try:
-            if self._layout_dirty:
-                self._rewire()
-            self._follow_recording_clip()
-            song = self.song()
-            if now >= self._ownership_at or song.view.selected_track != self._ownership_track:
-                self._ownership_at = now + 0.5
-                self._ownership_track = song.view.selected_track
-                ownership = inspect_song(song)
-                if ownership != self._ownership_state:
-                    self.log_message('Mikro Companion NI ownership: selected={}, instances={}, uncertain={}'.format(*ownership))
-                self._ownership_state = ownership
-            native, instances, uncertain = self._ownership_state
-            ownership_packet = 'MO1 {} {} {} {} ready'.format(self._feedback_epoch, int(native), instances, int(uncertain))
-            self._socket.sendto(ownership_packet.encode('ascii'), ('127.0.0.1', 39473))
-            sampled = time.perf_counter()
-            packet = "MR2 {} {:.6f} {:.6f} {} {:.9f} ready".format(self._feedback_epoch,
-                float(getattr(song, "tempo", 120.0)), float(getattr(song, "current_song_time", 0.0)), int(song.is_playing), sampled)
-            self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
-            packet = self._pattern.packet(self._feedback_epoch)
-            if self._pattern.enabled:
-                self._socket.sendto(self._pattern.edit_packet(self._feedback_epoch).encode('ascii'), ('127.0.0.1', 39473))
-            if packet != self._last_pattern_packet or self._state_dirty or now - self._last_sent >= 0.5:
-                self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
-                self._last_pattern_packet = packet
-            if hasattr(self.song().view, "detail_clip"):
-                try:
-                    packet = self._sequencer.packet(self._feedback_epoch, now)
-                except Exception as error:
-                    if self._sequencer.enabled:
-                        self.log_message("Mikro Companion sequencer unavailable: {}".format(error))
-                    self._sequencer.enabled = False
-                    packet = "MS1 {} 0 0 36 0 1 0 0 -1 17 0 0 -1 0 ready".format(self._feedback_epoch)
-                if not self._sequencer.enabled and self._step_return_grid is not None:
-                    self._mixer.enabled = self._mixer.tempo = self._browser.enabled = False
-                    self._pattern.enter(self._step_return_grid)
-                    self._step_return_grid = None
-                    pattern_packet = self._pattern.packet(self._feedback_epoch)
-                    self._socket.sendto(pattern_packet.encode("ascii"), ("127.0.0.1", 39473))
-                    self._last_pattern_packet = pattern_packet
-                    self._state_dirty = True
-                if packet != self._last_step_packet or self._state_dirty or now - self._last_sent >= 0.5:
-                    self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
-                    self._last_step_packet = packet
-            if hasattr(self.song().view, "detail_clip"):
-                packet = self._sequencer.grid_packet(self._feedback_epoch)
-                if packet != self._last_grid_packet or self._state_dirty or now - self._last_sent >= 0.5:
-                    self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
-                    self._last_grid_packet = packet
-            if hasattr(self.application().view, "show_view"):
-                packet = "MB1 {} {} ready".format(self._feedback_epoch, int(self._browser.enabled))
-                if packet != self._last_browser_packet or self._state_dirty or now - self._last_sent >= 0.5:
-                    self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
-                    self._last_browser_packet = packet
-            if hasattr(self.song(), "tempo"):
-                packet = "MCU1 {} {} {:.2f} ready".format(self._feedback_epoch, int(self._mixer.tempo), self.song().tempo)
-                self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
-            try:
-                device_packet = self._devices.packet(self._feedback_epoch)
-                self._last_device_error = None
-            except Exception as error:
-                self._devices.close()
-                device_packet = "MDEV1 {} 0 0 0 0 0 0 - - - ready".format(self._feedback_epoch)
-                if str(error) != self._last_device_error:
-                    self.log_message("Mikro Companion device state unavailable: {}".format(error))
-                    self._last_device_error = str(error)
-            if device_packet != self._last_device_packet or self._state_dirty or now - self._last_sent >= 0.5:
-                self._socket.sendto(device_packet.encode("ascii"), ("127.0.0.1", 39473))
-                self._last_device_packet = device_packet
-            try:
-                navigation_packet = self._navigation.packet(self._feedback_epoch)
-                self._last_navigation_error = None
-            except Exception as error:
-                self._navigation.close()
-                navigation_packet = "MNAV1 {} 0 0 - ready".format(self._feedback_epoch)
-                if str(error) != self._last_navigation_error:
-                    self.log_message("Mikro Companion navigation state unavailable: {}".format(error))
-                    self._last_navigation_error = str(error)
-            if navigation_packet != self._last_navigation_packet or self._state_dirty or now - self._last_sent >= 0.5:
-                self._socket.sendto(navigation_packet.encode("ascii"), ("127.0.0.1", 39473))
-                self._last_navigation_packet = navigation_packet
-            mixer_packet = self._mixer.packet(self._feedback_epoch)
-            if mixer_packet is not None and (mixer_packet != self._last_mixer_packet or self._state_dirty or now - self._last_sent >= 0.5):
-                self._socket.sendto(mixer_packet.encode("ascii"), ("127.0.0.1", 39473))
-                self._last_mixer_packet = mixer_packet
-            if hasattr(self.song().view, "detail_clip"):
-                try:
-                    self._selection.sync(now)
-                    pitches = self._keyboard.notes(self.song(), self._track) if self._keyboard.enabled else range(self._base_note(), self._base_note() + 16)
-                    present, selected = self._selection.masks(pitches)
-                    selection = (self._feedback_epoch, int(self._selection.available), int(self._selection.enabled), present, selected, int(self._selection.can_erase()))
-                    self._last_selection_error = None
-                except Exception as error:
-                    self._selection.enabled = False
-                    selection = (self._feedback_epoch, 0, 0, 0, 0, 0)
-                    if str(error) != self._last_selection_error:
-                        self.log_message("Mikro Companion selection state unavailable: {}".format(error))
-                    self._last_selection_error = str(error)
-                if selection != self._last_selection_state or self._state_dirty or now - self._last_sent >= 0.5:
-                    packet = "MV2 {} {} {} {} {} {} ready".format(*selection)
-                    self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
-                    self._last_selection_state = selection
-            if hasattr(self.song(), "can_undo"):
-                try:
-                    edit_mask = self._editor.availability(now)
-                    if self._selection.enabled and self._selection.can_erase():
-                        edit_mask |= 1 << 8  # Shift + pad 9: Clear selected notes.
-                    history = (bool(self.song().can_undo), bool(self.song().can_redo))
-                    if self._editor.shift and history != self._last_history:
-                        self.log_message("Mikro Companion history state: undo={}; redo={}".format(*history))
-                        self._last_history = history
-                    if edit_mask != self._last_edit_mask or self._state_dirty or now - self._last_sent >= 0.5:
-                        packet = "ME1 {} {} ready".format(self._feedback_epoch, edit_mask)
-                        self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
-                        self._last_edit_mask = edit_mask
-                    self._last_edit_error = None
-                except Exception as error:
-                    message = str(error)
-                    if message != self._last_edit_error:
-                        self.log_message("Mikro Companion edit state unavailable: {}".format(message))
-                    self._last_edit_error = message
-                    packet = "ME1 {} {} ready".format(self._feedback_epoch, int(self.song().can_undo) | (int(self.song().can_redo) << 1))
-                    self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
-            if self._state_dirty or now - self._last_sent >= 0.5:
-                song = self.song()
-                color = pad_color(getattr(self._track, "color", 0x0000FF))
-                base = self._base_note()
-                mask = self._occupied_mask(base)
-                mix = self._mix_track()
-                normal = self._track in tuple(song.tracks)
-                notes = normal and getattr(self._track, "has_midi_input", True)
-                packet = "MN1 {} {} {} ready".format(self._feedback_epoch, int(notes), int(normal))
-                self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
-                state = "MC8 {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} ready".format(
-                    mask, int(song.is_playing), int(self._recording_active()), color, base, self._feedback_epoch, int(song.metronome), int(song.view.follow_song),
-                    self._selected_note(), int(getattr(mix, "mute", False)) if mix is not None else 0, int(getattr(mix, "solo", False)) if mix is not None else 0, int(mix is not None),
-                    int(native), instances, int(uncertain)
-                )
-                if hasattr(self._track, "name"):
-                    name = ''.join(c for c in self._track.name if c.isprintable())[:64] or 'Track'
-                    tracks = tuple(song.tracks)
-                    returns = tuple(getattr(song, 'return_tracks', ()))
-                    if self._track in tracks:
-                        name = numbered_track_name(name, str(tracks.index(self._track) + 1))
-                    elif self._track in returns:
-                        index = returns.index(self._track)
-                        name = numbered_track_name(name, chr(65 + index) if index < 26 else 'R{}'.format(index + 1))
-                    encoded = base64.b64encode(name.encode('utf-8')).decode('ascii')
-                    packet = "MD1 {} {} ready".format(self._feedback_epoch, encoded)
-                    self._socket.sendto(packet.encode('ascii'), ('127.0.0.1', 39473))
-                keyboard = self._keyboard.packet(song, self._track, self._feedback_epoch)
-                if keyboard is not None:
-                    self._socket.sendto(keyboard.encode("ascii"), ("127.0.0.1", 39473))
-                if hasattr(song, "loop"):
-                    packet = "MT1 {} {} ready".format(self._feedback_epoch, int(song.loop))
-                    self._socket.sendto(packet.encode("ascii"), ("127.0.0.1", 39473))
-                self._socket.sendto(state.encode("ascii"), ("127.0.0.1", 39473))
-                self._last_sent = now
-                self._state_dirty = False
-                layout = (mask, color, base)
-                if layout != self._last_layout:
-                    notes = [base + i for i in range(16) if mask & (1 << i)]
-                    self.log_message("Mikro Companion notes: {}; pad color: {}".format(notes, color))
-                    self._last_layout = layout
-            if self._keyboard.enabled:
-                notes = [n for n in self._keyboard.notes(self.song(), self._track) if n >= 0]
-                if notes:
-                    self._clip_activity.update(self.song(), self._track, min(notes), max(notes) - min(notes) + 1)
-            else:
-                self._clip_activity.update(self.song(), self._track, self._base_note())
-            if self._last_error is not None:
-                self.log_message("Mikro Companion state recovered")
-            self._last_error = None
-        except Exception as error:
-            # No heartbeat on a failed state read: the companion releases notes.
-            message = "{}: {}".format(type(error).__name__, error)
-            if message != self._last_error:
-                self.log_message("Mikro Companion state unavailable: {}".format(message))
-            self._last_error = message
-            self._retry_at = now + 1.0
-            self._state_dirty = True
-            self._layout_dirty = True
+        publish_state(self)
 
     def disconnect(self):
         try:

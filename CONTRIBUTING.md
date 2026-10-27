@@ -8,6 +8,8 @@ Changes and tests should describe the behavior they add or fix. Keep controller 
 
 Repository layout: `src/` contains the companion, `ableton/` the Live script, `scripts/` the build and packaging commands, and `tests/` the automated checks. `diagnostics/` contains troubleshooting tools. Runtime output goes to ignored `bin/`, `dist/` and `logs/` directories.
 
+Live integration code is split between `src/AbletonIntegration.cs` (lifecycle and input coordination) and `src/ableton/` (state reception, panel output, protocol parsers, screen rendering and browser interaction). The State and Panel files are parts of the same class and share its state. In the Live script, `surface.py` coordinates modes, `controls.py` registers MIDI commands and `feedback.py` publishes state. When adding a Python module, update the installer and distribution allowlists; C# application and integration-test builds share `scripts/Get-CompanionSources.ps1`.
+
 Clone the repository or extract a release's **Source code** archive into a writable folder. Use the release tag when building a published version; the development branch may contain newer changes. Open Windows PowerShell in the source folder.
 
 The launcher build uses the x64 .NET Framework 4.x compiler included with Windows. The full Live build also needs Visual Studio C++ Build Tools with **Desktop development with C++**, Windows SDK **10.0.26100.0**, and internet access to download the pinned MIDI SDK. Install Python **3.11** to run the Live script tests. A controller and Live are not needed for these build-time tests.
@@ -50,7 +52,7 @@ Hosted runners do not test a physical Mikro, Live, MIDI Services loopback operat
 
 1. Review the version's entry in `CHANGELOG.md`, including beta labels and compatibility limits. Its version must match `src/AssemblyInfo.cs`.
 2. Build and test from a clean commit. Check launch/exit, Live connection, pads, transport and USB reconnection on hardware.
-3. Push a tag matching the application version, such as `v0.4.0`. Both build jobs must pass. The workflow attaches the portable build and its SHA-256 checksum to a **draft** GitHub Release, using the matching version's changelog entry as its description.
+3. Push a tag matching the application version, such as `v0.5.0`. Both build jobs must pass. The workflow attaches the portable build and its SHA-256 checksum to a **draft** GitHub Release, using the matching version's changelog entry as its description.
 4. Download and test that build. Review the draft before publishing it manually. Date the changelog entry when the release is published.
 
 `scripts/Prepare-Distribution.ps1 -Archive` creates the same ZIP locally. The package uses an explicit file list and copies the example config. Local `companion.ini`, logs, diagnostic binaries and research directories are excluded. `BUILD-INFO.json` records the source commit and whether its working tree had changes. Checksums identify the files; they do not sign the Windows executables.
