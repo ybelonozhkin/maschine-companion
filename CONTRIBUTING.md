@@ -8,6 +8,8 @@ Changes and tests should describe the behavior they add or fix. Keep controller 
 
 Repository layout: `src/` contains the companion, `ableton/` the Live script, `scripts/` the build and packaging commands, and `tests/` the automated checks. `diagnostics/` contains troubleshooting tools. Runtime output goes to ignored `bin/`, `dist/` and `logs/` directories.
 
+`src/basic/` contains the local MIDI controller, clock, pattern engine, MIDI-file export and per-serial settings. `src/ableton/AbletonIntegration.Basic.cs` coordinates ownership and transitions between Basic and the Live integration.
+
 Live integration code is split between `src/AbletonIntegration.cs` (lifecycle and input coordination) and `src/ableton/` (state reception, panel output, protocol parsers, screen rendering and browser interaction). The State and Panel files are parts of the same class and share its state. In the Live script, `surface.py` coordinates modes, `controls.py` registers MIDI commands and `feedback.py` publishes state. When adding a Python module, update the installer and distribution allowlists; C# application and integration-test builds share `scripts/Get-CompanionSources.ps1`.
 
 Clone the repository or extract a release's **Source code** archive into a writable folder. Use the release tag when building a published version; the development branch may contain newer changes. Open Windows PowerShell in the source folder.

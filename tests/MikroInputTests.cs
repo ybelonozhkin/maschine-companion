@@ -5,7 +5,18 @@ using System.Collections.Generic;
 class MikroInputTests {
  static void Check(bool ok,string name){if(!ok)throw new Exception(name);}
  static byte[] Pad(int id,int kind,int value){var r=new byte[64];r[0]=2;r[1]=(byte)id;r[2]=(byte)(kind|(value>>8));r[3]=(byte)value;return r;}
+ static void ActivityTests(){
+  var input=new MikroInput();int activity=0,notes=0,turns=0;input.Activity+=()=>activity++;input.Note+=(n,v,d)=>notes++;input.Encoder+=d=>turns+=d;
+  var report=new byte[64];report[0]=1;input.Feed(report);input.Feed(report);Check(activity==0,"idle reports do not count as physical activity");
+  report[7]=1;input.Feed(report);Check(activity==1&&turns==1,"encoder activity preserves its delta");input.Feed(report);Check(activity==1,"duplicate encoder report is not activity");
+  report[4]=2;input.Feed(report);input.Feed(report);Check(activity==2,"button press counts once");report[4]=0;input.Feed(report);Check(activity==3,"button release is activity");
+  report[10]=50;input.Feed(report);input.Feed(report);Check(activity==4,"strip movement counts once");
+  input.Feed(Pad(12,0x10,1600));input.Feed(Pad(12,0x10,1600));Check(activity==5&&notes==1,"pad activity preserves the first note and suppresses duplicate reports");
+  input.Feed(Pad(12,0x40,2000));input.Feed(Pad(12,0x40,2000));Check(activity==6,"unchanged pressure is not activity");
+  input.Feed(Pad(12,0x30,0));Check(activity==7&&notes==2,"release activity preserves Note Off");input.Reset();Check(activity==7,"internal reset is not physical activity");
+ }
  static int Main(string[] args){
+  ActivityTests();
   var input=new MikroInput();var on=new List<int>();var velocity=new List<int>();var active=new HashSet<int>();int off=0,peak=0;var transport=new List<MikroTransport>();
   input.Note+=(n,v,down)=>{if(down){Check(active.Add(n),"duplicate note");on.Add(n);velocity.Add(v);peak=Math.Max(peak,active.Count);}else{Check(active.Remove(n),"unmatched release");off++;}};
   input.Transport+=transport.Add;

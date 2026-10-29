@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 
 sealed partial class AbletonIntegration : IDisposable {
  readonly INiOwnership ni;
+ readonly bool nativeHandoffEnabled;
  volatile bool disposed;
  NiOwnerState niOwner;long niOwnerAt=-10000;bool bundledOwnership;
  bool LeaseAllowed {get{return ni==null || ni.Granted;}}
@@ -50,6 +51,7 @@ sealed partial class AbletonIntegration : IDisposable {
  readonly NativeMidi midi=new NativeMidi();readonly MikroInput input=new MikroInput();readonly Action<string> log;
  readonly MidiConnectionRetry midiConnection;
  readonly NoteRepeat repeat;long repeatClockAt=-10000;
+ readonly PadAftertouch aftertouch;
  bool RepeatAvailable {get{return ExpressionAvailable && clock.ElapsedMilliseconds-repeatClockAt<1500;}}
  bool RepeatMode {get{return repeat.Enabled;}}
  bool arpView,padRepeatPinned;
@@ -66,24 +68,30 @@ sealed partial class AbletonIntegration : IDisposable {
  readonly long[] flashUntil=new long[128];
  readonly long[] playbackFlashUntil=new long[128];long feedbackEpoch=-1;bool feedbackSeen;
  readonly object panelGate=new object();byte[] pending;string pendingPath;string pendingLabel;Task panelTask;bool owned;long panelGeneration;readonly PanelOutput panelOutput=new PanelOutput();
- public string Status {get{return error.Length>0?"Ableton unavailable: "+error:modeChanged?"Paused after MIDI mode: return to native, then Resume":midiConnection.Error.Length>0?(midiConnection.RetryAvailable?"MIDI unavailable; use Resume: ":"Retrying MIDI connection: ")+midiConnection.Error:!midi.Ready?"Waiting for MIDI port":ni!=null && !InputAllowed?(niOwner==null || clock.ElapsedMilliseconds-niOwnerAt>=1000?"Waiting for controller ownership state":niOwner.Uncertain?"Paused: unknown device identity":niOwner.Selected?(niOwner.Count>1?"Maschine selected: choose its Controller manually":"Maschine VST selected"):ni.Status):!active?"Waiting for Ableton control surface":"Ableton: notes + transport";}}
+ public string Status {get{return basic!=null&&profileError.Length>0?BasicStatus:error.Length>0?"Ableton unavailable: "+error:modeChanged?"Paused after MIDI mode: return to native, then Resume":midiConnection.Error.Length>0?(midiConnection.RetryAvailable?"MIDI unavailable; use Resume: ":"Retrying MIDI connection: ")+midiConnection.Error:!midi.Ready?"Waiting for MIDI port":basicActive?BasicStatus:ni!=null && !InputAllowed?(niOwner==null || clock.ElapsedMilliseconds-niOwnerAt>=1000?"Waiting for controller ownership state":niOwner.Uncertain?"Paused: unknown device identity":niOwner.Selected?(niOwner.Count>1?"Maschine selected: choose its Controller manually":"Maschine VST selected"):ni.Status):!active?"Waiting for Ableton control surface":"Ableton: notes + transport";}}
  public bool MidiRetryAvailable {get{return midiConnection.RetryAvailable;}}
- public int FixedVelocity {get{return input.FixedValue;}set{if(value<1 || value>127)throw new ArgumentOutOfRangeException("FixedVelocity");input.FixedValue=value;}}
+ public int FixedVelocity {get{return input.FixedValue;}set{if(value<1 || value>127)throw new ArgumentOutOfRangeException("FixedVelocity");input.FixedValue=value;if(basic!=null){basic.FixedVelocity=value;basic.Settings.FixedVelocity=value;basic.Dirty=true;}}}
  public bool IsWriting {get{return !PanelIdle || ni!=null && ni.Busy;}}
- public bool OwnsController {get{return InputAllowed && !modeChanged;}}
+ public bool OwnsController {get{return (InputAllowed||basicActive&&LeaseAllowed) && !modeChanged;}}
  public bool PausedForMidiMode {get{return modeChanged;}}
- public AbletonIntegration(Action<string> logger,Action<string,byte[]> writer=null,int statePort=39473,string activityInputs="",int fixedVelocity=127,Action<int> browserKeyWriter=null,bool showStartupSplash=true,bool nativeHandoff=false,INiOwnership ownership=null){
-  if(nativeHandoff)ni=ownership ?? new NiControllerSession(logger,()=>PanelIdle);
+ public AbletonIntegration(Action<string> logger,Action<string,byte[]> writer=null,int statePort=39473,string activityInputs="",int fixedVelocity=127,Action<int> browserKeyWriter=null,bool showStartupSplash=true,bool nativeHandoff=false,INiOwnership ownership=null,string basicDirectory=null,MidiClockSource basicClockSource=MidiClockSource.Internal,string basicClockInput="Mikro Companion Send",double basicTempo=120,bool displayDim=false){
+  if(basicDirectory!=null)deviceStore=new BasicDeviceStore(basicDirectory);
+  nativeHandoffEnabled=nativeHandoff;
+  if(nativeHandoff||basicDirectory!=null)ni=ownership ?? new NiControllerSession(logger,()=>PanelIdle);
   flashTimer.Interval=15;flashTimer.Start();flashTimer.Stop();flashTimer.Tick+=(sender,args)=>{RenderPanel();if(!FlashesActive(clock.ElapsedMilliseconds))flashTimer.Stop();};
   FixedVelocity=fixedVelocity;startupSplash=showStartupSplash;
   log=logger;panelWrite=writer ?? StandbyLight.Frame;browserKeys=new BrowserKeyOutput(()=>InputAllowed && host && BrowserMode && !modeChanged,logger);browserKeys.Enabled=browserKeyWriter==null;browserKeyWrite=browserKeyWriter ?? browserKeys.Post;
   repeat=new NoteRepeat((n,v,d)=>{if(!d || InputAllowed)midi.Note(n,v,d);},logger);
+  aftertouch=new PadAftertouch((n,v)=>{if(midi.Ready&&(v==0||InputAllowed))midi.PolyPressure(n,v);},v=>{if(midi.Ready&&(v==0||InputAllowed))midi.ChannelPressure(v);},()=>InputAllowed&&!repeat.Enabled);
+  input.PadHeld+=aftertouch.Held;input.RawPressure+=aftertouch.Pressure;
   repeat.Generated+=note=>generatedFlashes.Enqueue(note);
   externalInputs=new MidiActivityInputs(activityInputs,logger);
   socket=new UdpClient(new IPEndPoint(IPAddress.Loopback,statePort));socket.Client.Blocking=false;
   input.Note+=(n,v,d)=>{if(active){repeat.Note(n,v,d);if(d && !input.Sixteen)Latch(flashUntil,n);}};input.Transport+=Control;
+  input.Activity+=EndIdentification;
   input.Pressure+=(n,v)=>{if(active)repeat.Pressure(n,v);};
   input.Repeat+=held=>{
+   aftertouch.Clear();
    if(held && !input.Shift && DeviceMode)midi.DeviceClose();
    if(held && input.Shift){
     if(active && !input.Group){
@@ -110,6 +118,7 @@ sealed partial class AbletonIntegration : IDisposable {
   input.RootEncoder+=delta=>TurnEncoder(delta,true);
   input.Bank+=Navigate;
   midiConnection=new MidiConnectionRetry(midi.Create,midi.TryOpen,()=>midi.Ready,log);midiConnection.Tick(clock.ElapsedMilliseconds);
+  if(basicDirectory!=null)InitializeBasic(basicDirectory,basicClockSource,basicClockInput,basicTempo,displayDim);
  }
  void TurnEncoder(int delta,bool shift){
   if(!active || input.Group)return;
@@ -149,7 +158,7 @@ sealed partial class AbletonIntegration : IDisposable {
   if(RepeatMode && !ArpMode){repeatPage=Math.Max(0,Math.Min(1,repeatPage+direction));return;}
   if(KeyboardMode)keyboardPage=Math.Max(0,Math.Min(2,keyboardPage+direction));
  }
- void ResetRepeat(){repeat.Reset();arpView=padRepeatPinned=false;int ignored;while(generatedFlashes.TryDequeue(out ignored)){} }
+ void ResetRepeat(){try{repeat.Reset();}finally{aftertouch.Clear();arpView=padRepeatPinned=false;int ignored;while(generatedFlashes.TryDequeue(out ignored)){} }}
  void Control(MikroTransport command){
   if(!active)return;
   if(command==MikroTransport.ViewToggle){midi.ViewToggle();return;}
@@ -207,6 +216,11 @@ sealed partial class AbletonIntegration : IDisposable {
  }
  void ClearPlayback(){Array.Clear(playbackFlashUntil,0,playbackFlashUntil.Length);}
  public bool Feed(string controllerPath,byte[] report){
+  TrackReleasedPads(report);
+  if(basic!=null){
+   if(basicActive&&LeaseAllowed&&path==controllerPath){if(report.Length>=5&&report[0]==1&&(report[1]&1)!=0&&(report[4]&2)!=0){modeChanged=true;Pause(true);log("Basic paused after MIDI-mode shortcut");}else try{basic.Feed(report);RenderBasicPanel();}catch(Exception ex){profileError=ex.Message;Pause(true);log("Basic input stopped: "+ex.Message);}return true;}
+   if(!active)return true;
+  }
   if(!host)return false;
   if(InputAllowed && path==controllerPath){
    if(report.Length>=5 && report[0]==1 && (report[1]&1)!=0 && (report[4]&2)!=0){modeChanged=true;Pause(true);log("Ableton paused after MIDI-mode shortcut");}
@@ -215,9 +229,12 @@ sealed partial class AbletonIntegration : IDisposable {
   return true;
  }
  public void Pause(bool clear){
+  EndIdentification();
   try{if(ni!=null)ni.Reset();}finally{Deactivate(clear && ni==null);}
  }
  void Deactivate(bool clear){
+  if(active&&basic!=null)handoverPads|=input.HeldPadMask;
+  if(basicActive)DeactivateBasic();
   startupUntil=0;flashTimer.Stop();Array.Clear(editFlash,0,16);
   bool wasActive=active;active=false;
   ResetRepeat();
@@ -231,7 +248,7 @@ sealed partial class AbletonIntegration : IDisposable {
   lastFrame="";
  }
  public void ResetState(){stateAt=niOwnerAt=-10000;int drained=0;while(socket.Available>0 && drained++<256){IPEndPoint sender=null;socket.Receive(ref sender);}}
- public void Resume(){if(disposed)return;modeChanged=false;midiConnection.Resume(clock.ElapsedMilliseconds);ResetState();}
+ public void Resume(){if(disposed)return;ResumeProfiles();modeChanged=false;midiConnection.Resume(clock.ElapsedMilliseconds);ResetState();}
  public void Dispose(){
   if(disposed)return;
   disposed=true;
@@ -241,6 +258,8 @@ sealed partial class AbletonIntegration : IDisposable {
   cleanup("Pause",()=>Pause(true));
   cleanup("Panel output",()=>{Task task;lock(panelGate){task=panelTask;}if(task!=null && !task.Wait(1500))throw new TimeoutException("Panel output did not finish");});
   if(ni!=null)cleanup("NI ownership",ni.Dispose);
+  if(basic!=null)cleanup("Basic playing",basic.Dispose);
+  if(clockInput!=null)cleanup("MIDI clock input",clockInput.Dispose);
   cleanup("Note Repeat",repeat.Dispose);
   cleanup("MIDI activity inputs",externalInputs.Dispose);
   cleanup("Browser",browserKeys.Dispose);

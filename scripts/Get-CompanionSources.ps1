@@ -4,3 +4,4 @@ foreach ($name in @('Companion.cs','WindowFocus.cs','WindowClose.cs','AssemblyIn
     Join-Path $sourceRoot $name
 }
 Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'ableton') -Filter '*.cs' -File | Sort-Object Name | Select-Object -ExpandProperty FullName
+Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'basic') -Filter '*.cs' -File | Sort-Object Name | Select-Object -ExpandProperty FullName

@@ -115,7 +115,7 @@ sealed partial class AbletonIntegration {
   return "PAD BANK\n"+BankScreen.Mark(BankScreen.Range(baseNote));
  }
  void QueuePanel(string target,byte[] frame,int baseNote=-1){
-  lock(panelGate){pendingPath=target;pending=frame;pendingLabel=baseNote>=0 && clock.ElapsedMilliseconds<startupUntil?BankScreen.StartupSplash:ScreenLabel(baseNote);
+  lock(panelGate){pendingPath=target;pending=frame;pendingLabel=IdentificationLabel(baseNote>=0 && clock.ElapsedMilliseconds<startupUntil?BankScreen.StartupSplash:ScreenLabel(baseNote));
    if(panelTask==null || panelTask.IsCompleted)panelTask=Task.Factory.StartNew(WritePanels);
   }
  }

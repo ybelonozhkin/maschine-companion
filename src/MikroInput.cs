@@ -6,8 +6,13 @@ enum MikroTransport { Play, Stop, Record, TapTempo, Metronome, Follow, GridFeedb
 sealed class MikroInput {
  readonly bool[] commandPads=new bool[16];
  readonly int[] held=new int[16];readonly int[] voices=new int[128];ulong buttons;int? encoder;bool arrowChord,gridHold;
+ readonly int[] pressureValues=new int[16];
+ public event Action Activity;
+ void SignalActivity(){if(Activity!=null)Activity();}
  public event Action<int,int,bool> Note;
  public event Action<int,int> Pressure;
+ public event Action<int,int> RawPressure;
+ public event Action<int,int,bool> PadHeld;
  public event Action<MikroTransport> Transport;
  public event Action<int> Bank;
  public event Action<int> SelectEvent;
@@ -37,6 +42,9 @@ sealed class MikroInput {
  public int PreviewPitch(int position){return PreviewNotes==null?BaseNote+position:PreviewNotes[position];}
  public int SelectedNote=-1,FixedValue=127;public bool Fixed, Sixteen;
  public bool IsPadHeld(int pad){return held[pad]>=0;}
+ public bool AnyHeld {get{for(int i=0;i<held.Length;i++)if(held[i]>=0)return true;return false;}}
+ public int HeldPadMask {get{int mask=0;for(int i=0;i<held.Length;i++)if(held[i]>=0)mask|=1<<i;return mask;}}
+ public void SuppressPads(int mask){for(int i=0;i<16;i++)if((mask&(1<<i))!=0)commandPads[i]=true;}
  public void SetMode(bool fixedMode,bool sixteenMode){ReleaseAll();Fixed=fixedMode;Sixteen=sixteenMode;}
  public static int StepVelocity(int position){return 1+(position*126+7)/15;}
  public int BaseNote=36;
@@ -53,6 +61,10 @@ sealed class MikroInput {
   for(int offset=0;offset<report.Length;offset+=64){
    if(report[offset]==1){
     ulong current=0;for(int b=0;b<5;b++)current|=(ulong)report[offset+1+b]<<(8*b);
+    int nextEncoder=report[offset+7]&15;
+    int turnDelta=encoder.HasValue?(nextEncoder-encoder.Value+16)%16:0;
+    int nextStrip=report[offset+10]|(report[offset+11]<<8);
+    if(current!=buttons||turnDelta!=0&&turnDelta!=8||nextStrip<=200&&nextStrip!=stripValue)SignalActivity();
     ulong down=current & ~buttons;bool oldShift=Shift,oldSelect=Select,oldRepeat=RepeatHeld,oldGroup=Group;buttons=current;
     bool patternSelection=PatternOnly && !SceneOnly && (Select || oldSelect);
     bool nextGrid=Shift && (current&(1UL<<21))!=0 && !((StepOnly || PatternOnly && !SceneOnly) && Select);
@@ -104,6 +116,9 @@ sealed class MikroInput {
      int pad=report[i],kind=report[i+1]&0xf0,value=((report[i+1]&15)<<8)|report[i+2];
      if(pad==0 && kind==0 && value==0)break;
      if(pad>=16)continue;
+     if(kind==0x30&&(patternPads[pad]||commandPads[pad]||held[pad]>=0))SignalActivity();
+     else if(kind==0x10&&!patternPads[pad]&&!commandPads[pad]&&held[pad]<0){pressureValues[pad]=value;SignalActivity();}
+     else if(kind==0x40&&held[pad]>=0&&pressureValues[pad]!=value){pressureValues[pad]=value;SignalActivity();}
      if(kind==0x30 && patternPads[pad]){patternPads[pad]=false;if(PatternPad!=null)PatternPad(PadPosition(pad)+16);continue;}
      if(patternPads[pad])continue;
      if(kind==0x30 && commandPads[pad]){commandPads[pad]=false;continue;}
@@ -124,11 +139,13 @@ sealed class MikroInput {
       if(Sixteen && voices[note]>0 && Note!=null)Note(note,0,false);
       bool first=voices[note]++==0;
       if((first || Sixteen) && Note!=null)Note(note,velocity,true);
+      if(PadHeld!=null)PadHeld(pad,note,true);
      }else if(kind==0x30 && held[pad]>=0){
       int note=held[pad];held[pad]=-1;
+      if(PadHeld!=null)PadHeld(pad,note,false);
       if(--voices[note]==0 && Note!=null)Note(note,0,false);
      }
-     else if(kind==0x40 && held[pad]>=0 && !Fixed && !Sixteen && Pressure!=null)Pressure(held[pad],Velocity(value));
+     else if(kind==0x40 && held[pad]>=0){if(RawPressure!=null)RawPressure(pad,value);if(!Fixed && !Sixteen && Pressure!=null)Pressure(held[pad],Velocity(value));}
      // Pressure updates an existing voice; it never creates a strike or releases a pad.
     }
    }
@@ -139,7 +156,7 @@ sealed class MikroInput {
  }
  public void CancelHeldNotes(){
   // Consume cancelled pads until physical release, including repeated down reports.
-  for(int pad=0;pad<16;pad++)if(held[pad]>=0){held[pad]=-1;commandPads[pad]=true;}
+  for(int pad=0;pad<16;pad++)if(held[pad]>=0){int note=held[pad];held[pad]=-1;commandPads[pad]=true;if(PadHeld!=null)PadHeld(pad,note,false);}
   for(int note=0;note<128;note++)if(voices[note]>0){voices[note]=0;if(Note!=null)Note(note,0,false);}
  }
  void NavigateArrows(ulong current,ulong down){
@@ -155,7 +172,7 @@ sealed class MikroInput {
   for(int pad=0;pad<16;pad++)if(patternPads[pad]){patternPads[pad]=false;commandPads[pad]=true;if(PatternPad!=null)PatternPad(PadPosition(pad)+16);}
  }
  public void ReleaseAll(){
-  for(int pad=0;pad<16;pad++){held[pad]=-1;commandPads[pad]=false;}
+  for(int pad=0;pad<16;pad++){int note=held[pad];held[pad]=-1;commandPads[pad]=false;if(note>=0&&PadHeld!=null)PadHeld(pad,note,false);}
   ReleasePatternPads();
   for(int note=0;note<128;note++)if(voices[note]>0){voices[note]=0;if(Note!=null)Note(note,0,false);}
  }

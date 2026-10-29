@@ -17,9 +17,12 @@ interface INiOwnership : IDisposable {
  bool Granted {get;} bool Busy {get;} string Status {get;}
  void Request(bool value,long revision);void Reset();
 }
-sealed class NiControllerSession : INiOwnership {
+interface INiDeviceIdentity {string Serial {get;}}
+sealed class NiControllerSession : INiOwnership, INiDeviceIdentity {
  readonly Action<string> log;readonly Func<bool> panelIdle;
  volatile bool wanted,granted,hadControl,failed,disposed;long revision=-1;Task worker;
+ volatile string serial;
+ public string Serial {get{return serial;}}
  public bool Granted {get{return wanted && granted && !disposed;}}
  public bool Busy {get{return worker!=null && !worker.IsCompleted;}}
  public string Status {get{return failed?"NI connection failed: use Resume to retry":Granted?"NI controller acquired":wanted?"Waiting for NI controller ownership":Busy?"Releasing NI controller":"NI controller released";}}
@@ -42,7 +45,8 @@ sealed class NiControllerSession : INiOwnership {
    child.ErrorDataReceived+=(s,e)=>{if(e.Data!=null)log("NI helper: "+e.Data);};
    if(!child.Start())throw new IOException("Cannot start NI helper");child.BeginErrorReadLine();
    var reader=Task.Factory.StartNew(()=>{string line;while((line=child.StandardOutput.ReadLine())!=null){
-    if(line=="OWN 1"){if(wanted){granted=hadControl=true;log("NI controller ownership granted");}}
+    if(line.StartsWith("SERIAL ",StringComparison.Ordinal)){string value=line.Substring(7);if(BasicDeviceSettings.ValidSerial(value))serial=value;}
+    else if(line=="OWN 1"){if(wanted){granted=hadControl=true;log("NI controller ownership granted");}}
     else if(line=="OWN 0"){if(granted)log("NI controller ownership released or lost");granted=false;}
     else if(line.StartsWith("ERROR ",StringComparison.Ordinal))log("NI helper: "+line.Substring(6));
    }},TaskCreationOptions.LongRunning);
@@ -77,6 +81,7 @@ static class NiClientHost {
     device.Send(Words(0x03447143));var discovery=Stopwatch.StartNew();
     while(discovery.ElapsedMilliseconds<1200 && !stop.WaitOne(20)){}
     lock(units){if(units.Count!=1)throw new IOException("Expected exactly one Mikro MK3");serial=units.Single();}
+    Console.WriteLine("SERIAL "+serial);Console.Out.Flush();
     bool initialized=false,hasControl=false;var controlGate=new object();
     byte[] identity=Encoding.ASCII.GetBytes(serial+"\0");
     using(var instance=new Registration(servicePid,Join(Words(0x03444900,Product,0x4e694d32,0x70726d79,(uint)identity.Length),identity),stop,packet=>{

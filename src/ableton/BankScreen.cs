@@ -6,6 +6,7 @@ using System.Drawing.Text;
 
 static class BankScreen {
  public const string StartupSplash="Mikro\nCompanion";
+ public static string SerialLabel(string serial){if(!BasicDeviceSettings.ValidSerial(serial))throw new ArgumentException("Invalid controller serial");return "\u0006"+serial;}
  static readonly string[] names={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
  public static string PitchName(int note){return names[note%12];}
  public static string NoteName(int note){return names[note%12]+(note/12-2);}
@@ -59,6 +60,15 @@ static class BankScreen {
    format.FormatFlags|=StringFormatFlags.NoWrap|StringFormatFlags.MeasureTrailingSpaces;
    string[] lines=(text??"").Replace("\r","").Split('\n');
    if(text==null || text.Length==0)return bitmap;
+   if(text[0]=='\u0006'){
+    string serial=text.Substring(1);
+    for(int size=28;size>=1;size--)using(var font=new Font("Segoe UI",size,FontStyle.Bold,GraphicsUnit.Pixel)){
+     SizeF measured=graphics.MeasureString(serial,font,10000,format);
+     if((measured.Width>126||measured.Height>32)&&size>1)continue;
+     graphics.DrawString(serial,font,Brushes.White,Math.Max(0,(128-measured.Width)/2),Math.Max(0,(32-measured.Height)/2),format);break;
+    }
+    return bitmap;
+   }
    if(lines.Length==1){using(var font=new Font("Segoe UI",18,FontStyle.Bold,GraphicsUnit.Pixel))DrawValue(graphics,Runs(lines[0]),font,format,5);}
    else{
     graphics.SetClip(new Rectangle(0,0,128,16));

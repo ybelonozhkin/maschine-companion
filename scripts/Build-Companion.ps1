@@ -31,6 +31,10 @@ foreach ($notice in 'microsoft-midi-MIT.txt','cppwinrt-MIT.txt','r00tman-MIT.txt
 if ($LASTEXITCODE -ne 0) { throw 'Mikro input test compilation failed' }
 & .\bin\MikroInputTests.exe tests\fixtures\mikro-native-20261017.txt
 if ($LASTEXITCODE -ne 0) { throw 'Mikro input tests failed' }
+& "$framework\csc.exe" /nologo /nowarn:0649 /target:exe /platform:x64 /out:bin\AftertouchTests.exe src\MikroInput.cs src\basic\PadAftertouch.cs tests\AftertouchTests.cs
+if ($LASTEXITCODE -ne 0) { throw 'Aftertouch test compilation failed' }
+& .\bin\AftertouchTests.exe
+if ($LASTEXITCODE -ne 0) { throw 'Aftertouch tests failed' }
 & "$framework\csc.exe" /nologo /target:exe /platform:x64 /out:bin\NoteRepeatTests.exe src\NoteRepeat.cs tests\NoteRepeatTests.cs
 if ($LASTEXITCODE -ne 0) { throw 'Note repeat test compilation failed' }
 & .\bin\NoteRepeatTests.exe
@@ -40,3 +44,12 @@ if ($LASTEXITCODE -ne 0) { throw 'Note repeat tests failed' }
 if ($LASTEXITCODE -ne 0) { throw 'MIDI connection test compilation failed' }
 & .\bin\MidiConnectionTests.exe
 if ($LASTEXITCODE -ne 0) { throw 'MIDI connection tests failed' }
+
+& "$framework\csc.exe" @manifestArgs @uiaArgs /nologo /target:exe /platform:x64 /main:BasicModeTests /out:bin\BasicModeTests.exe /reference:System.Windows.Forms.dll /reference:System.Drawing.dll @companionSources tests\BasicModeTests.cs
+if ($LASTEXITCODE -ne 0) { throw 'Basic mode test compilation failed' }
+& .\bin\BasicModeTests.exe
+if ($LASTEXITCODE -ne 0) { throw 'Basic mode tests failed' }
+
+# Compile the service-dependent tests on CI; run Test-Midi.ps1 on a MIDI Services host.
+& "$framework\csc.exe" @manifestArgs @uiaArgs /nologo /target:exe /platform:x64 /main:NativeMidiTests /out:bin\NativeMidiTests.exe /reference:System.Windows.Forms.dll /reference:System.Drawing.dll @companionSources tests\NativeMidiTests.cs tests\BasicMidiIntegrationTests.cs
+if ($LASTEXITCODE -ne 0) { throw 'MIDI integration test compilation failed' }

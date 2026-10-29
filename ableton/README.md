@@ -32,7 +32,9 @@ Leave the option disabled to use manual Pause/Resume.
 
 The OLED shows the current parameter and value. An inverse value is the encoder target; lit arrows indicate another parameter page. Hold **Group** to see the selected track's number and name.
 
-Check **Dim** in the tray for minimum OLED contrast, or uncheck it for normal contrast. The setting is saved.
+Check **Mikro MK3 > Dim** in the tray for minimum OLED contrast, or uncheck it for normal contrast. The setting is saved.
+
+For expressive held notes, choose **Mikro MK3 > Aftertouch > Channel** or **Polyphonic** in the tray; Off is the default. Use an instrument/preset with pressure mapped to a sound parameter. For Polyphonic, enable MPE for the Mikro Companion input and record pressure in Live's Note Expression editor. MPE input uses All Channels routing. See [aftertouch behavior and limits](../basic/README.md#aftertouch).
 
 Available buttons are dim and active functions are bright. Drum Rack pads show occupied cells in the track color. The selected sound stays brighter; played notes flash. Other instruments light all 16 pads.
 

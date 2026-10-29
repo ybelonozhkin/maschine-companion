@@ -7,6 +7,7 @@ using System.Diagnostics;
 sealed partial class AbletonIntegration {
  public void Tick(string controllerPath,bool hostRunning,bool blocked){
   if(disposed)return;
+  if(blocked||controllerPath!=path||!OwnsController)EndIdentification();
   host=hostRunning;if(!hostRunning){startupShown=false;startupUntil=0;}
   if(controllerPath==null || path!=null && path!=controllerPath)startupShown=false;
   int packets=0;while(socket.Available>0 && packets++<32){IPEndPoint sender=null;byte[] data=socket.Receive(ref sender);if(data.Length>512)continue;
@@ -99,7 +100,7 @@ sealed partial class AbletonIntegration {
      && int.TryParse(fields[10],out mute) && (mute==0||mute==1) && int.TryParse(fields[11],out soloed) && (soloed==0||soloed==1)
      && int.TryParse(fields[12],out mix) && (mix==0||mix==1)));
    if(format && int.TryParse(fields[1],out newMask) && newMask>=0 && newMask<=65535 && int.TryParse(fields[2],out p) && int.TryParse(fields[3],out r) && (p==0||p==1) && (r==0||r==1) && fields[fields.Length-1]=="ready"){
-    if(feedbackEpoch!=epoch){input.CancelHeldNotes();ResetRepeat();repeatClockAt=-10000;stripPosition=modPosition=0;input.KeyboardNotes=null;input.ReleaseAll();midi.ReleaseAll();input.Sixteen=false;pendingSelected=-1;selectionUntil=0;Array.Clear(flashUntil,0,flashUntil.Length);ClearPlayback();}
+    if(feedbackEpoch!=epoch){input.CancelHeldNotes();ResetRepeat();repeatClockAt=-10000;stripPosition=modPosition=0;input.KeyboardNotes=null;input.ReleaseAll();if(!basicActive)midi.ReleaseAll();input.Sixteen=false;pendingSelected=-1;selectionUntil=0;Array.Clear(flashUntil,0,flashUntil.Length);ClearPlayback();}
     if(playing && p==0)ClearPlayback();feedbackEpoch=epoch;
     if(bundled){bundledOwnership=true;niOwner=bundledOwner;niOwnerAt=clock.ElapsedMilliseconds;}
     if(pendingSelected==selected || clock.ElapsedMilliseconds>=selectionUntil){if(input.Sixteen && input.SelectedNote!=selected)input.ReleaseAll();input.SelectedNote=selected;pendingSelected=-1;selectionUntil=0;}
@@ -109,7 +110,7 @@ sealed partial class AbletonIntegration {
    }
   }
   editMask=editEpoch==feedbackEpoch?pendingEditMask:0;
-  if(input.NotesEnabled!=NotesAvailable){input.CancelHeldNotes();ResetRepeat();input.ReleaseAll();if(midi.Ready)midi.ReleaseAll();input.NotesEnabled=NotesAvailable;input.Sixteen=false;ClearPlayback();Array.Clear(flashUntil,0,128);}
+  if(input.NotesEnabled!=NotesAvailable){input.CancelHeldNotes();ResetRepeat();input.ReleaseAll();if(midi.Ready&&!basicActive)midi.ReleaseAll();input.NotesEnabled=NotesAvailable;input.Sixteen=false;ClearPlayback();Array.Clear(flashUntil,0,128);}
   if(input.PatternOnly!=PatternMode || input.SceneOnly!=SceneMode){input.ReleaseAll();input.Sixteen=false;input.PatternOnly=PatternMode;input.SceneOnly=SceneMode;}
   input.PatternSelectable=PatternMode?pattern.Selectable:0;
   if(input.StepOnly!=StepMode){input.ReleaseAll();input.Sixteen=false;input.StepOnly=StepMode;}
@@ -122,11 +123,12 @@ sealed partial class AbletonIntegration {
    input.KeyboardNotes=KeyboardMode?keyboard.Notes:null;
   }
   midiConnection.Tick(clock.ElapsedMilliseconds);
+  if(TickProfiles(controllerPath,blocked))return;
   input.PreviewNotes=MelodicPreview?keyboard.Notes:null;
   bool next=host && !blocked && !modeChanged && controllerPath!=null && midi.Ready && clock.ElapsedMilliseconds-stateAt<2000;
-  if(ni!=null){bool request=next && niOwner!=null && niOwner.Epoch==feedbackEpoch && clock.ElapsedMilliseconds-niOwnerAt<1000 && niOwner.CompanionRequested;if(!request && active)Deactivate(false);ni.Request(request,feedbackEpoch);next=request && ni.Granted;}
+  if(ni!=null){bool request=next && niOwner!=null && niOwner.Epoch==feedbackEpoch && clock.ElapsedMilliseconds-niOwnerAt<1000 && niOwner.CompanionRequested && (basic==null||nativeHandoffEnabled||niOwner.Count==0);if(!request && active)Deactivate(false);ni.Request(request,feedbackEpoch);next=request && ni.Granted;}
   if(!next){if(active)Deactivate(ni==null && !blocked);return;}
-  if(!active || path!=controllerPath){Deactivate(false);path=controllerPath;active=true;lastFrame="";if(startupSplash && !startupShown){startupShown=true;startupUntil=clock.ElapsedMilliseconds+2000;}log("Ableton HID active");}
+  if(!active || path!=controllerPath){Deactivate(false);path=controllerPath;active=true;input.SuppressPads(handoverPads);handoverPads=0;lastFrame="";if(startupSplash && !startupShown){startupShown=true;startupUntil=clock.ElapsedMilliseconds+2000;}log("Ableton HID active");}
   externalInputs.Tick(clock.ElapsedMilliseconds);
   if(!RepeatAvailable && RepeatMode){input.CancelHeldNotes();ResetRepeat();}
   if((!ExpressionAvailable || DeviceMode) && (stripPosition!=0 || modPosition!=0)){midi.ResetExpression();stripPosition=modPosition=0;}

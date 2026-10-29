@@ -16,10 +16,13 @@ You can change the target application and hold times in `companion.ini`. If seve
 
 ## Tray menu
 
+The **Mikro MK3** submenu contains the controller's Mode, MIDI channel, clock, Dim, Vegas and local pattern actions. Pause and Resume apply to the whole companion.
+
 - **Pause for 1 hour** pauses the companion for an hour.
 - **Pause / Resume** pauses until you resume. Restarting the companion also clears a manual pause.
-- **Vegas mode** animates the lights while the controller is idle. It switches off when Live or Maschine starts, or when the companion restarts.
-- **Dim** lowers the OLED contrast to its minimum. Uncheck it to restore normal contrast. The setting is saved.
+- **Detect** shows the serial on the OLED until the next controller action. Available while Basic or Control surface owns the controller.
+- **Mikro MK3 > Vegas mode** animates the lights while the controller is idle. It switches off when Live or Maschine starts, or when the companion restarts.
+- **Mikro MK3 > Dim** lowers the OLED contrast to its minimum. Uncheck it to restore normal contrast. The setting is saved.
 - **Show status** explains whether the companion is ready or paused.
 - **Reload config** applies changes to `companion.ini`; invalid settings leave the previous config active.
 - **Start with Windows** enables startup for your account. Disable it before moving or removing the app, then enable it again from its new location.

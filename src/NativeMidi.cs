@@ -65,7 +65,8 @@ sealed class NativeMidi : IDisposable {
  [DllImport("winmm.dll")] static extern uint midiOutShortMsg(IntPtr handle,uint message);
  [DllImport("winmm.dll")] static extern uint midiOutClose(IntPtr handle);
  readonly MidiOutputSession output=new MidiOutputSession(OpenOutput,midiOutShortMsg,midiOutClose);
- bool created;readonly bool[] notes=new bool[128];int bend=8192,modulation;
+ bool created;readonly bool[] notes=new bool[128];readonly int[] polyPressure=new int[128];int channelPressure;int bend=8192,modulation,channel=1;
+ public int Channel {get{lock(outputGate)return channel;}set{if(value<1||value>16)throw new ArgumentOutOfRangeException("Channel");lock(outputGate){if(channel==value)return;if(Ready)ReleaseAll();channel=value;bend=8192;modulation=0;}}}
  static IntPtr OpenOutput(uint id){IntPtr handle;uint result=midiOutOpen(out handle,id,IntPtr.Zero,UIntPtr.Zero,0);if(result!=0)throw new Exception("MIDI output open error="+result);return handle;}
  public bool Ready {get{return output.Ready;}}
  public void Create(){if(created)return;var error=new StringBuilder(512);int result=MC_Create(error,error.Capacity);if(result!=0)throw new Exception("Windows MIDI port: "+error+" ("+result+")");created=true;}
@@ -78,9 +79,18 @@ sealed class NativeMidi : IDisposable {
  }
  readonly object outputGate=new object();
  void Send(int status,int a,int b){lock(outputGate){uint r=output.Send((uint)(status|(a<<8)|(b<<16)));if(r!=0)throw new Exception("MIDI output send error="+r);}}
- public void Note(int note,int velocity,bool down){if(note<0||note>127||velocity<0||velocity>127)throw new ArgumentOutOfRangeException();Send(down?0x90:0x80,note,down?velocity:0);notes[note]=down;}
- public void PitchBend(int value){if(value<0||value>16383)throw new ArgumentOutOfRangeException("value");if(value!=bend){Send(0xe0,value&127,value>>7);bend=value;}}
- public void Modulation(int value){if(value<0||value>127)throw new ArgumentOutOfRangeException("value");if(value!=modulation){Send(0xb0,1,value);modulation=value;}}
+ public void Note(int note,int velocity,bool down){if(note<0||note>127||velocity<0||velocity>127)throw new ArgumentOutOfRangeException();lock(outputGate){Send((down?0x90:0x80)|(channel-1),note,down?velocity:0);notes[note]=down;if(!down){PolyPressure(note,0);if(Array.IndexOf(notes,true)<0)ChannelPressure(0);}}}
+ public void PolyPressure(int note,int value){
+  if(note<0||note>127||value<0||value>127)throw new ArgumentOutOfRangeException();
+  lock(outputGate){if(value>0&&!notes[note]||polyPressure[note]==value)return;Send(0xa0|(channel-1),note,value);polyPressure[note]=value;}
+ }
+ public void ChannelPressure(int value){
+  if(value<0||value>127)throw new ArgumentOutOfRangeException("value");
+  lock(outputGate){if(value>0&&Array.IndexOf(notes,true)<0||channelPressure==value)return;Send(0xd0|(channel-1),value,0);channelPressure=value;}
+ }
+ public void ResetAftertouch(){lock(outputGate){Exception error=null;for(int n=0;n<128;n++)if(polyPressure[n]!=0)try{PolyPressure(n,0);}catch(Exception ex){error=ex;}try{ChannelPressure(0);}catch(Exception ex){error=ex;}if(error!=null)throw error;}}
+ public void PitchBend(int value){if(value<0||value>16383)throw new ArgumentOutOfRangeException("value");lock(outputGate)if(value!=bend){Send(0xe0|(channel-1),value&127,value>>7);bend=value;}}
+ public void Modulation(int value){if(value<0||value>127)throw new ArgumentOutOfRangeException("value");lock(outputGate)if(value!=modulation){Send(0xb0|(channel-1),1,value);modulation=value;}}
  public void ResetExpression(){PitchBend(8192);Modulation(0);}
  public void BrowserClose(){Send(0xb0,67,127);Send(0xb0,67,0);}
  public void BrowserFavorite(){Send(0xb0,68,127);Send(0xb0,68,0);}
@@ -123,7 +133,7 @@ sealed class NativeMidi : IDisposable {
  public void PatternEdit(bool duplicate){Send(0xb0,92,duplicate?1:2);}
  public void SelectNote(int note){Send(0xb0,28,note);}
  public void Bank(int direction){int cc=direction==0?36:direction<0?23:24;Send(0xb0,cc,127);Send(0xb0,cc,0);}
- public void ReleaseAll(){Exception error=null;for(int i=0;i<128;i++)if(notes[i])try{Note(i,0,false);}catch(Exception ex){error=ex;}try{ResetExpression();}catch(Exception ex){error=ex;}if(error!=null)throw error;}
+ public void ReleaseAll(){lock(outputGate){Exception error=null;for(int i=0;i<128;i++)if(notes[i])try{Note(i,0,false);}catch(Exception ex){error=ex;}try{ResetExpression();}catch(Exception ex){error=ex;}try{ResetAftertouch();}catch(Exception ex){error=ex;}if(error!=null)throw error;}}
  public void Dispose(){try{if(Ready)ReleaseAll();}finally{try{output.Close();}finally{if(created){int result=MC_Close();if(result!=0)throw new Exception("Windows MIDI port cleanup error="+result);created=false;}}}}
 }
 
