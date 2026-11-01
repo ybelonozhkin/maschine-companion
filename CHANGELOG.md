@@ -4,7 +4,7 @@ All notable changes are documented here, using [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-10-29
+## [0.5.0] - 2026-11-01
 
 ### Added
 
