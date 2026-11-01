@@ -2,13 +2,13 @@
 
 Download `MaschineCompanion-<version>-win-x64.zip` from the project's [Releases page](https://github.com/ybelonozhkin/maschine-companion/releases). Choose this file to run the app; the **Source code** downloads are for compiling it yourself.
 
-Extract the entire folder to a writable location before starting the app. Keep `bin`, `ableton`, `launcher` and `LICENSES` together with the files at the top level.
+Extract the entire folder to a writable location before starting the app. Keep `bin`, `ableton`, `basic`, `launcher` and `LICENSES` together with the files at the top level.
 
 ## Requirements
 
 - Windows 11 x64 and Maschine Mikro MK3. Other controllers and macOS are not supported by this build.
 - The NI controller driver. The default launcher configuration expects Maschine 3 at its usual installation path; edit `Executable` in `companion.ini` if yours is elsewhere.
-- For Live integration: Ableton Live 12, Windows 11 25H2 or later, and Windows MIDI Services with loopback support. See Microsoft's [MIDI Services setup](https://microsoft.github.io/MIDI/) and [system requirements](https://microsoft.github.io/MIDI/kb/minimum-requirements/). Tested on Live 12.4.6 and 12.4.7 Standard; other setups need compatibility testing.
+- For Basic MIDI or Live integration: Windows 11 25H2 or later and Windows MIDI Services with loopback support. See Microsoft's [MIDI Services setup](https://microsoft.github.io/MIDI/) and [system requirements](https://microsoft.github.io/MIDI/kb/minimum-requirements/). The Live script requires Live 12; tested on Live 12.4.6 and 12.4.7 Standard.
 - The latest Microsoft Visual C++ v14 Redistributable, x64: [Microsoft download](https://aka.ms/vc14/vc_redist.x64.exe). Install or update it before using the Live integration. An older runtime may cause missing-DLL or entry-point errors. See [Microsoft's runtime requirements](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist).
 
 Build tools and Python are not required to run this download. Put Mikro in native mode; if it is in MIDI mode, use Shift + Maschine to switch back.
@@ -21,11 +21,15 @@ Build tools and Python are not required to run this download. Put Mikro in nativ
 
 See [launcher controls and the tray menu](launcher/README.md) and the [configuration reference](launcher/CONFIGURATION.md) for more options.
 
+## Basic MIDI playing
+
+Choose **Mikro MK3 > Mode > Basic mode** in the tray, enable **Mikro Companion** as an input in your music application and arm an instrument track. No Live script is required. See [Basic setup, controls and clock](basic/README.md).
+
 ## Ableton Live installation
 
-1. Close Live and exit the companion from its tray menu.
+1. Close Live.
 2. Install the requirements listed above, including Windows MIDI Services and the current Visual C++ runtime.
-3. Open `companion.ini` in a text editor. Set `EnableAbleton=true` and save it. Keep the `Executable` path pointing to your installed Maschine application.
+3. Run `Start-Companion.cmd`, choose **Mikro MK3 > Mode > Control surface** in the tray, then exit the companion before continuing. Until the Live script connects, Mikro remains playable in Basic mode.
 4. Open PowerShell in the extracted folder and install the Live script:
 
    ```powershell
@@ -60,7 +64,7 @@ selection inside Maschine.
 
 ## Update or remove
 
-Close Live and exit the companion before replacing files. Extract an update into a new folder, copy your previous `companion.ini` into it, and run the new script installer before reopening Live. If Start with Windows was enabled, disable it in the old copy before moving folders and enable it again in the new copy.
+Close Live and exit the companion before replacing files. Extract an update into a new folder, copy your previous `companion.ini` and `devices.ini` (if present) into it, and run the new script installer before reopening Live. Export any local Step pattern before exiting. If Start with Windows was enabled, disable it in the old copy before moving folders and enable it again in the new copy.
 
 To remove the app, disable Start with Windows, exit the companion and remove its extracted folder. In Live, clear its Control Surface row. With Live closed, remove `Remote Scripts\MikroCompanion` from your User Library.
 

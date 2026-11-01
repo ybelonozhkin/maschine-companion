@@ -4,7 +4,9 @@ Use the Maschine Mikro MK3 as a control surface for Ableton Live on Windows. Pla
 
 Pads show track and clip colors, selected sounds and note activity. The OLED shows the parameter name and its value.
 
-Version **0.4.0**. See the [changelog](CHANGELOG.md) for changes and the [roadmap](ROADMAP.md) for planned features.
+Version **0.5.0**. See the [changelog](CHANGELOG.md) for changes and the [roadmap](ROADMAP.md) for planned features.
+
+For ordinary MIDI playing without a Live script, choose **Basic mode** in the tray. This experimental mode provides local Pad/Keyboard layouts, Note Repeat, Arp and a simple Step sequencer with MIDI-file export. See the [Basic setup and controls](basic/README.md).
 
 ## Ableton Live
 
@@ -26,7 +28,7 @@ Tested with **Live 12.4.6 and 12.4.7 Standard on Windows 11 x64**. The companion
 | Control playback | Play, Stop, Rec, Restart, Tap and Follow; Shift accesses Loop and Metronome. |
 | Select tracks (beta) | Group + arrows select tracks; Group + Shift + right creates a MIDI track. |
 | Mix the selected track | Mute, Solo and Volume. Volume changes by 0.5 dB, or 0.1 dB with Shift; encoder press resets it to 0 dB. |
-| Change expression | Fixed Vel / 16 Vel, Pitch and Mod on the Smart Strip. |
+| Change expression | Fixed Vel / 16 Vel, Pitch and Mod on the Smart Strip; optional experimental Channel or Polyphonic aftertouch. |
 
 See [installation and requirements](GETTING-STARTED.md#ableton-live-installation) and the [full controls guide](ableton/README.md). Arm tracks manually for recording. When using Maschine as a plug-in, choose **Pause** in the tray or enable the [experimental automatic handoff](ableton/README.md#experimental-automatic-handoff).
 

@@ -77,6 +77,7 @@ sealed class StandbyVegas {
 class Settings {
  public bool EnableAbleton=false;
  public bool EnableNativeHandoff=false;
+ public MidiClockSource ClockSource=MidiClockSource.Internal;public string ClockInput="Mikro Companion Send";public double BasicTempo=120;
  public string MidiActivityInputs="";public int FixedVelocity=127;public bool DisplayDim;
  public string Executable,Arguments="";public int HoldMs=1200;public bool StandbyLed=true,EnableClose=true,PauseWhenDawRunning=true;public int CloseHoldMs=2000;public string StandbyBrightness="Dim";public const string DefaultDaws="Ableton Live*;FL;FL64;FL (scaled);FL64 (scaled);FL (compatible memory);reaper;Cubase*;Nuendo*;Studio One;Bitwig Studio;ProTools;Cakewalk;Sonar";public string[] DawProcesses=ParseDaws(DefaultDaws);
  public byte StandbyBrightnessValue {get{return BrightnessValue(StandbyBrightness);}}
@@ -110,6 +111,9 @@ class Settings {
    switch(pair.Key.ToLowerInvariant()) {
     case "enableableton":s.EnableAbleton=bool.Parse(pair.Value);break;
     case "enablenativehandoff":s.EnableNativeHandoff=bool.Parse(pair.Value);break;
+    case "clocksource":s.ClockSource=(MidiClockSource)Enum.Parse(typeof(MidiClockSource),pair.Value,true);if(!Enum.IsDefined(typeof(MidiClockSource),s.ClockSource))throw new Exception("ClockSource must be Internal or External");break;
+    case "clockinput":s.ClockInput=pair.Value;if(s.ClockInput.Length==0||s.ClockInput.Length>128)throw new Exception("ClockInput must name a MIDI input");break;
+    case "basictempo":s.BasicTempo=double.Parse(pair.Value,CultureInfo.InvariantCulture);if(s.BasicTempo<20||s.BasicTempo>999||double.IsNaN(s.BasicTempo))throw new Exception("BasicTempo must be 20..999");break;
     case "displaydim":s.DisplayDim=bool.Parse(pair.Value);break;
     case "fixedvelocity":s.FixedVelocity=int.Parse(pair.Value);if(s.FixedVelocity<1 || s.FixedVelocity>127)throw new Exception("FixedVelocity must be 1..127");break;
     case "midiactivityinputs":s.MidiActivityInputs=pair.Value;break;
@@ -270,7 +274,7 @@ static class StandbyLight {
   }
  }
 }
-class Companion : Form {
+partial class Companion : Form {
  [DllImport("kernel32.dll")] static extern bool FreeConsole();
  [StructLayout(LayoutKind.Sequential)] struct Device {public IntPtr handle;public uint type;}
  [StructLayout(LayoutKind.Sequential)] struct Registration {public ushort page,usage;public uint flags;public IntPtr target;}
@@ -290,8 +294,9 @@ class Companion : Form {
   log=new StreamWriter(Path.Combine(root,"logs","companion-"+DateTime.Now.ToString("yyyyMMdd-HHmmss-fff")+".log"));log.AutoFlush=true;
   ShowInTaskbar=false;WindowState=FormWindowState.Minimized;
   var menu=new ContextMenuStrip();statusItem=new ToolStripMenuItem("Starting companion..."){Enabled=false};menu.Items.Add(statusItem);manualPauseItem=new ToolStripMenuItem("Pause",null,(s,e)=>PauseIndefinitely());menu.Items.Add(manualPauseItem);pauseItem=new ToolStripMenuItem("Pause for 1 hour",null,(s,e)=>PauseOneHour());menu.Items.Add(pauseItem);resumeItem=new ToolStripMenuItem("Resume",null,(s,e)=>ResumeNow()){Enabled=false};menu.Items.Add(resumeItem);vegasItem=new ToolStripMenuItem("Vegas mode",null,(s,e)=>ToggleVegas());menu.Items.Add(vegasItem);dimItem=new ToolStripMenuItem("Dim",null,(s,e)=>ToggleDim()){Checked=settings.DisplayDim};menu.Items.Add(dimItem);menu.Items.Add("Show status",null,(s,e)=>ShowStatus());menu.Items.Add("Reload config",null,(s,e)=>Reload());startupExecutable=System.Reflection.Assembly.GetExecutingAssembly().Location;startupItem=new ToolStripMenuItem("Start with Windows",null,(s,e)=>ToggleStartup());startupItem.Checked=StartupRegistration.Enabled(startupExecutable);menu.Items.Add(startupItem);menu.Items.Add("Open log folder",null,(s,e)=>Process.Start(Path.Combine(root,"logs")));menu.Items.Add("Exit",null,(s,e)=>Close());
+  AddControllerMenus(menu);
   tray=new NotifyIcon{Icon=System.Drawing.SystemIcons.Application,Text="Maschine Companion",ContextMenuStrip=menu,Visible=true};
-  timer.Interval=50;timer.Tick+=(s,e)=>SafeTick();timer.Start();Log("started hold="+settings.HoldMs+" executable="+settings.Executable);sessionLocked=!SessionState.InputAvailable();if(settings.EnableAbleton)ableton=new AbletonIntegration(Log,activityInputs:settings.MidiActivityInputs,fixedVelocity:settings.FixedVelocity,nativeHandoff:settings.EnableNativeHandoff);Scan();sessionNotifications=SessionState.WTSRegisterSessionNotification(Handle,0);if(!sessionNotifications)Log("session notification registration unavailable");SafeTick();
+  timer.Interval=50;timer.Tick+=(s,e)=>SafeTick();timer.Start();Log("started hold="+settings.HoldMs+" executable="+settings.Executable);sessionLocked=!SessionState.InputAvailable();if(settings.EnableAbleton)ableton=CreateControllerEngine();Scan();sessionNotifications=SessionState.WTSRegisterSessionNotification(Handle,0);if(!sessionNotifications)Log("session notification registration unavailable");SafeTick();
  }
  void PauseIndefinitely(){PauseOneHour();pause.StartIndefinite();Log("paused until resumed");UpdateStatus(clock.ElapsedMilliseconds);}
  void PauseOneHour(){
@@ -302,15 +307,16 @@ class Companion : Form {
  void ResumeNow(){pause.Resume();manualPauseItem.Visible=true;if(ableton!=null)ableton.Resume();resumeItem.Enabled=false;pauseItem.Visible=true;lastProcessCheck=-1000;foreach(var c in controllers.Values){c.Action=0;c.Hold.CancelUntilRelease();c.LedAttempted=false;}Log("manual pause ended");SafeTick();}
  void ToggleStartup(){try{StartupRegistration.Set(!startupItem.Checked,startupExecutable);startupItem.Checked=StartupRegistration.Enabled(startupExecutable);Log("Windows startup enabled="+startupItem.Checked);}catch(Exception ex){Log("startup registration error: "+ex.Message);tray.ShowBalloonTip(5000,"Startup error",ex.Message,ToolTipIcon.Error);}}
  void ToggleDim(){
-  try{bool next=!settings.DisplayDim;DisplayContrast.Save(Path.Combine(root,"companion.ini"),next);settings.DisplayDim=next;dimItem.Checked=next;lastProcessCheck=-1000;Log("display Dim="+next);SafeTick();}
+  try{bool next=!ControllerDisplayDim;DisplayContrast.Save(Path.Combine(root,"companion.ini"),next);settings.DisplayDim=next;if(ableton!=null)ableton.SelectDisplayDim(next);dimItem.Checked=next;lastProcessCheck=-1000;Log("display Dim="+next);SafeTick();}
   catch(Exception ex){Log("display setting error: "+ex.Message);tray.ShowBalloonTip(5000,"Display setting error",ex.Message,ToolTipIcon.Error);}
  }
  void UpdateContrast(long now,bool allowed){
+  bool dim=ControllerDisplayDim;
   foreach(var c in controllers.Values){
    if(!allowed){c.ContrastDim=null;continue;}
-   if(c.ContrastDim==settings.DisplayDim || now<c.ContrastRetryAt || StandbyLight.IsBusy || ableton!=null && ableton.IsWriting)continue;
+   if(c.ContrastDim==dim || now<c.ContrastRetryAt || StandbyLight.IsBusy || ableton!=null && ableton.IsWriting)continue;
    if(c.Path.IndexOf("mi_00",StringComparison.OrdinalIgnoreCase)<0)continue;
-   try{StandbyLight.Contrast(c.Path,settings.DisplayDim,delegate{return !stopping && !suspended && !sessionLocked && !pause.Active(DateTimeOffset.UtcNow) && !AbletonIntegration.NativeBlocked() && (abletonHost?ableton!=null && ableton.OwnsController:!Processes.LedBlocked(settings.Executable) && Processes.DawBlockers(settings).Length==0);});c.ContrastDim=settings.DisplayDim;Log("display contrast "+(settings.DisplayDim?"Dim":"Normal")+" applied");}
+   try{StandbyLight.Contrast(c.Path,dim,delegate{return !stopping && !suspended && !sessionLocked && !pause.Active(DateTimeOffset.UtcNow) && !AbletonIntegration.NativeBlocked() && (settings.EnableAbleton && ableton!=null && ableton.OwnsController || !Processes.LedBlocked(settings.Executable) && Processes.DawBlockers(settings).Length==0);});c.ContrastDim=dim;Log("display contrast "+(dim?"Dim":"Normal")+" applied");}
    catch(Exception ex){c.ContrastRetryAt=now+5000;Log("display contrast unavailable: "+ex.Message);}
   }
  }
@@ -325,14 +331,15 @@ class Companion : Form {
  void ShowStatus(){MessageBox.Show(status+(blockDetails.Length>0?"\n"+blockDetails:"")+"\nWindows startup: "+(startupItem.Checked?"enabled":"disabled")+(runningNow && settings.EnableClose?"\nTo bring the configured app forward and request exit, hold for "+(settings.CloseHoldMs/1000.0).ToString("0.0",CultureInfo.InvariantCulture)+" s":"")+"\nConfig: "+Path.Combine(root,"companion.ini"),"Maschine Companion",MessageBoxButtons.OK,MessageBoxIcon.Information);}
  static string ProcessesLabel(string details){int pid=details.IndexOf(" PID ",StringComparison.Ordinal);return pid<0?details:details.Substring(0,pid);}
  void UpdateStatus(long now) {
-  bool paused=pause.Active(DateTimeOffset.UtcNow) || ableton!=null && ableton.PausedForMidiMode;
+  UpdateControllerMenus();
+  bool paused=pause.Active(DateTimeOffset.UtcNow) || settings.EnableAbleton && ableton!=null && ableton.PausedForMidiMode;
   resumeItem.Enabled=paused || ableton!=null && ableton.MidiRetryAvailable;manualPauseItem.Visible=!paused;pauseItem.Visible=!paused;
   vegasItem.Enabled=vegasItem.Checked || settings.StandbyLed && !paused && !sessionLocked && !suspended && controllers.Count>0 && !abletonHost && !runningNow && !ledBlockedNow && now>=launchUntil;
-  string next=sessionLocked?"Paused: Windows is locked or desktop unavailable":suspended?"Paused: computer is sleeping":pause.Active(DateTimeOffset.UtcNow)?(pause.Indefinite?"Paused until resumed":"Paused until "+pause.Until.Value.ToLocalTime().ToString("HH:mm")):controllers.Count==0?"Controller disconnected":abletonHost && ableton!=null?ableton.Status:dawBlockedNow?"Paused: "+dawDetails:runningNow?"Running: "+ProcessesLabel(blockDetails):ledBlockedNow?"Paused: "+blockDetails:now<launchUntil?"Waiting after launch request":"Ready: hold Maschine for "+(settings.HoldMs/1000.0).ToString("0.0",CultureInfo.InvariantCulture)+" s";
+  string next=sessionLocked?"Paused: Windows is locked or desktop unavailable":suspended?"Paused: computer is sleeping":pause.Active(DateTimeOffset.UtcNow)?(pause.Indefinite?"Paused until resumed":"Paused until "+pause.Until.Value.ToLocalTime().ToString("HH:mm")):controllers.Count==0?"Controller disconnected":settings.EnableAbleton && ableton!=null?ableton.Status:dawBlockedNow?"Paused: "+dawDetails:runningNow?"Running: "+ProcessesLabel(blockDetails):ledBlockedNow?"Paused: "+blockDetails:now<launchUntil?"Waiting after launch request":"Ready: hold Maschine for "+(settings.HoldMs/1000.0).ToString("0.0",CultureInfo.InvariantCulture)+" s";
   if(next==status)return;status=next;statusItem.Text=next;tray.Text=next.Length>63?next.Substring(0,63):next;tray.Icon=runningNow?System.Drawing.SystemIcons.Information:System.Drawing.SystemIcons.Application;Log("status: "+next+(blockDetails.Length>0?"; "+blockDetails:""));
  }
  protected override void SetVisibleCore(bool value){base.SetVisibleCore(false);}
- void Reload(){try{var next=Settings.Load(Path.Combine(root,"companion.ini"));string restart=Settings.RestartRequired(settings,next);if(restart!=null)throw new Exception("Restart the companion after changing "+restart);if(settings.StandbyLed && !next.StandbyLed)foreach(var c in controllers.Values)if(c.LedSet && !LedOutputBlocked()){StandbyLight.Set(c.Path,0);c.LedSet=false;}settings=next;dimItem.Checked=settings.DisplayDim;if(ableton!=null)ableton.FixedVelocity=settings.FixedVelocity;lastProcessCheck=-1000;foreach(var c in controllers.Values){c.Hold.CancelUntilRelease();c.Action=0;c.LedAttempted=false;c.Vegas.Ready(false,clock.ElapsedMilliseconds);}Log("config reloaded");}catch(Exception ex){Log("config error: "+ex.Message);tray.ShowBalloonTip(5000,"Config error",ex.Message,ToolTipIcon.Error);}}
+ void Reload(){try{var next=Settings.Load(Path.Combine(root,"companion.ini"));string restart=Settings.RestartRequired(settings,next);if(restart!=null)throw new Exception("Restart the companion after changing "+restart);if(settings.StandbyLed && !next.StandbyLed)foreach(var c in controllers.Values)if(c.LedSet && !LedOutputBlocked()){StandbyLight.Set(c.Path,0);c.LedSet=false;}settings=next;dimItem.Checked=settings.DisplayDim;if(ableton!=null){ableton.FixedVelocity=settings.FixedVelocity;ableton.SelectDisplayDim(settings.DisplayDim);ableton.ReloadClock(settings.ClockSource,settings.ClockInput,settings.BasicTempo);}lastProcessCheck=-1000;foreach(var c in controllers.Values){c.Hold.CancelUntilRelease();c.Action=0;c.LedAttempted=false;c.Vegas.Ready(false,clock.ElapsedMilliseconds);}Log("config reloaded");}catch(Exception ex){Log("config error: "+ex.Message);tray.ShowBalloonTip(5000,"Config error",ex.Message,ToolTipIcon.Error);}}
  void Scan() {
   uint count=0,size=(uint)Marshal.SizeOf(typeof(Device));if(GetRawInputDeviceList(null,ref count,size)==uint.MaxValue){Log("Raw Input enumeration failed");return;}
   Device[] devices=new Device[count];if(GetRawInputDeviceList(devices,ref count,size)==uint.MaxValue)return;
@@ -372,15 +379,15 @@ class Companion : Form {
   if(now-lastProcessCheck>=500){lastProcessCheck=now;var snapshot=Processes.Observe(settings);runningNow=snapshot.Running;abletonHost=snapshot.AbletonRunning;nativeBlockedNow=snapshot.NativeOwner;dawDetails=snapshot.DawDetails;dawBlockedNow=dawDetails.Length>0;ledBlockedNow=snapshot.LedBlocked;blockDetails=dawBlockedNow?dawDetails:snapshot.RunningDetails.Length>0?snapshot.RunningDetails:snapshot.NativeDetails;}
   if(vegasItem.Checked && (runningNow || abletonHost)){vegasItem.Checked=false;Log("manual Vegas mode reset: application started");}
   foreach(var c in controllers.Values)c.Vegas.Ready(vegasItem.Checked && settings.StandbyLed && !pause.Active(DateTimeOffset.UtcNow) && !abletonHost && !runningNow && !ledBlockedNow && now>=launchUntil && !c.Hold.IsDown && !c.Vegas.InputHeld && !c.MarkerSet,now);
-  UpdateContrast(now,!pause.Active(DateTimeOffset.UtcNow) && !nativeBlockedNow && !runningNow && now>=launchUntil && (abletonHost?ableton!=null && ableton.OwnsController:!ledBlockedNow));
-  if(ableton!=null){
-   string controllerPath=null;if(!settings.EnableNativeHandoff || controllers.Count==1)foreach(var c in controllers.Values){controllerPath=c.Path;break;}
+  UpdateContrast(now,!pause.Active(DateTimeOffset.UtcNow) && !nativeBlockedNow && !runningNow && now>=launchUntil && (settings.EnableAbleton && ableton!=null && ableton.OwnsController || !ledBlockedNow));
+  if(ableton!=null&&settings.EnableAbleton){
+   string controllerPath=null;if(controllers.Count==1)foreach(var c in controllers.Values){controllerPath=c.Path;break;}
    if(abletonHost)foreach(var c in controllers.Values)if(c.LedSet){
     if(!nativeBlockedNow && Processes.DawHandoffAllowed(settings.DawProcesses) && !StandbyLight.IsBusy)try{StandbyLight.Set(c.Path,0);}catch(Exception ex){Log("Ableton standby handoff: "+ex.Message);}
     c.LedSet=false;
    }
    ableton.Tick(controllerPath,abletonHost,pause.Active(DateTimeOffset.UtcNow) || nativeBlockedNow);
-   if(abletonHost){foreach(var c in controllers.Values){c.Action=0;c.Hold.CancelUntilRelease();c.LedSet=false;c.LedAttempted=false;}FinishFocus();UpdateStatus(now);return;}
+   if(abletonHost||ableton.ProfilesEnabled){foreach(var c in controllers.Values){c.Action=0;c.Hold.CancelUntilRelease();c.LedSet=false;c.LedAttempted=false;}FinishFocus();UpdateStatus(now);return;}
    if(ableton.IsWriting || StandbyLight.IsBusy){UpdateStatus(now);return;}
   }
   if(pause.Active(DateTimeOffset.UtcNow)){UpdateStatus(now);return;}
@@ -506,7 +513,7 @@ class Companion : Form {
         int start=(int)header+8+i*length;
         var report=new byte[length];Marshal.Copy(IntPtr.Add(p,start),report,0,length);bool animated=c.Vegas.Animating;
         if(c.Vegas.Input(report,clock.ElapsedMilliseconds) && animated)c.LedAttempted=false;
-        if(ableton!=null && ableton.Feed(c.Path,report))continue;
+        if(settings.EnableAbleton && ableton!=null && ableton.Feed(c.Path,report))continue;
         if(Marshal.ReadByte(p,start)!=1)continue;
         bool pressed=(Marshal.ReadByte(p,start+1)&1)!=0;if(pressed!=c.Hold.IsDown) {
  Log("Maschine button "+(pressed?"down":"up"));

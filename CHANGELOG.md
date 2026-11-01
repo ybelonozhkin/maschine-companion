@@ -2,6 +2,24 @@
 
 All notable changes are documented here, using [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.5.0] - 2026-11-01
+
+### Added
+
+- Experimental Basic MIDI mode with local Pad/Keyboard layouts, scales, velocity controls, Pitch/Mod, Note Repeat and Arp, without a Live script.
+- A local Step pattern with recording, duplication, Undo/Redo, quantization, a Smart Strip overview and MIDI-file export.
+- Tray selection of Basic or Control surface, with Basic available while waiting for a Live script and deferred switching during playing.
+- Per-serial MIDI channel, clock, display and layout settings, grouped with pattern actions under the controller's tray submenu.
+- A global Detect command that shows the controller's serial until the next physical action, without consuming that action.
+- Experimental MIDI aftertouch for played pads in Basic and Live, with per-device Off, Channel and Polyphonic modes.
+- Internal tempo and external MIDI Clock input, with visible waiting status and note cleanup on clock loss.
+
+### Changed
+
+- Split the Live integration into smaller modules for state handling, display output, browser interaction and MIDI control registration.
+
 ## [0.4.0] - 2026-10-26
 
 ### Added

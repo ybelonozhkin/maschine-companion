@@ -83,6 +83,7 @@ with patch.dict(sys.modules, {
     spec = importlib.util.spec_from_file_location("mikro_surface_test.surface", directory / "surface.py")
     surface_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(surface_module)
+    feedback_module = sys.modules['mikro_surface_test.feedback']
 
 
 class LiveNode:
@@ -138,7 +139,7 @@ class SurfaceTests(unittest.TestCase):
         second = LiveNode(color=0xFF0000, devices=[])
         song.tracks.append(second)
         surface, connection = self.make_surface(song)
-        with patch.object(surface_module, "inspect_song", side_effect=[(False, 1, False), (True, 1, False), (False, 1, False)]):
+        with patch.object(feedback_module, "inspect_song", side_effect=[(False, 1, False), (True, 1, False), (False, 1, False)]):
             for now, track, expected in ((10, first, ["0", "1", "0"]),
                                          (10.1, second, ["1", "1", "0"]),
                                          (10.2, first, ["0", "1", "0"])):

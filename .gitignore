@@ -4,6 +4,8 @@ research/
 tools/
 dist/
 companion.ini
+devices.ini
+devices.ini.tmp-*
 __pycache__/
 *.pyc
 

@@ -6,8 +6,9 @@ using System.Runtime.InteropServices;
 using System.Net;
 using System.Net.Sockets;
 
-class NativeMidiTests {
- sealed class FakeNi : INiOwnership {
+partial class NativeMidiTests {
+ sealed class FakeNi : INiOwnership, INiDeviceIdentity {
+  public string Serial {get{return "TEST0123";}}
   public bool Granted {get;set;}public bool Busy {get{return false;}}public string Status {get{return "test NI";}}public bool Wanted;
   public void Request(bool value,long revision){Wanted=value;if(!value)Granted=false;}
   public bool ThrowReset,ThrowDispose;public int Disposals;
@@ -131,7 +132,8 @@ class NativeMidiTests {
   try{output.Send("b",frame,second,(path,report)=>{throw new Exception("test write failure");},()=>true);throw new Exception("write did not fail");}catch(Exception ex){Check(ex.Message=="test write failure","write failure propagated");}
   sent.Clear();output.Send("b",frame,second,write,()=>true);Check(sent.Count==3,"write failure invalidates cached panel");
  }
- [STAThread]static int Main(){
+ [STAThread]static int Main(string[] args){
+  if(args.Length==1&&args[0]=="--basic-only"){BasicProfileTests();return 0;}
   PanelOutputTests();
   Check(MidiActivityInputs.Matches("MIDIIN2 (Launchkey MK4 37 MIDI)","MIDIIN2 (Launchkey*")&&!MidiActivityInputs.Matches("Other MIDI","Launchkey*"),"MIDI activity name patterns");
   using(var midi=new NativeMidi()){
@@ -749,7 +751,7 @@ class NativeMidiTests {
    integration.Tick("test-device",false,false);Check(SpinWait.SpinUntil(()=>!integration.IsWriting,1000),"Live exit clears screen");
    Check(SpinWait.SpinUntil(()=>{tick();return screen(BankScreen.StartupSplash);},1000),"new Live session shows startup screen again");
   }
-  OwnershipTests();CleanupTests();
+  OwnershipTests();CleanupTests();BasicProfileTests();
   Console.WriteLine("PASS Windows MIDI loopback, native HID mapping, pause releases and suppresses notes, async panel output, endpoint cleanup");return 0;
  }
 }

@@ -22,7 +22,7 @@ class HidCapture : Form {
   duration=seconds*1000;string dir=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"..","logs");Directory.CreateDirectory(dir);
   log=new StreamWriter(Path.Combine(dir,"hid-native-"+DateTime.Now.ToString("yyyyMMdd-HHmmss-fff")+".log"),false,Encoding.UTF8){AutoFlush=true};
   ShowInTaskbar=false;timer.Interval=250;timer.Tick+=(s,e)=>{try{if(clock.ElapsedMilliseconds>=duration){Close();return;}if(clock.ElapsedMilliseconds>=nextScan){nextScan=clock.ElapsedMilliseconds+1000;Scan();}}catch(Exception ex){Log("ERROR "+ex.Message);Close();}};
-  var unused=Handle;Scan();Log("READY passive Raw Input; duration seconds="+seconds+" collections="+known.Count);timer.Start();
+  var unused=Handle;Scan();Log("READY passive Raw Input; duration seconds="+seconds+" collections="+known.Count+" stopwatchFrequency="+Stopwatch.Frequency);timer.Start();
  }
  protected override void SetVisibleCore(bool value){base.SetVisibleCore(false);}
  void Scan(){
@@ -49,13 +49,14 @@ class HidCapture : Form {
  }
  protected override void WndProc(ref Message m){
   try{if(m.Msg==0xff){
+   long receivedTicks=Stopwatch.GetTimestamp();
    uint bytes=0,header=(uint)(8+2*IntPtr.Size);GetRawInputData(m.LParam,0x10000003,IntPtr.Zero,ref bytes,header);
    if(bytes>=header+8 && bytes<=1048576){IntPtr p=Marshal.AllocHGlobal((int)bytes);
     try{if(GetRawInputData(m.LParam,0x10000003,p,ref bytes,header)!=uint.MaxValue&&Marshal.ReadInt32(p)==2&&known.Contains(Marshal.ReadIntPtr(p,8))){
      int length=Marshal.ReadInt32(p,(int)header),count=Marshal.ReadInt32(p,(int)header+4);
      if(length>0 && count>0 && (long)length*count<=bytes-header-8)for(int i=0;i<count;i++){
       var data=new byte[length];Marshal.Copy(IntPtr.Add(p,(int)header+8+i*length),data,0,length);reports++;
-      Log("REPORT device="+Marshal.ReadIntPtr(p,8)+" length="+length+" hex="+BitConverter.ToString(data));
+      Log("REPORT receivedTicks="+receivedTicks+" device="+Marshal.ReadIntPtr(p,8)+" length="+length+" hex="+BitConverter.ToString(data));
      }
     }}finally{Marshal.FreeHGlobal(p);}
    }

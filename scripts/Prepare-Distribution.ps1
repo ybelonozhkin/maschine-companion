@@ -21,11 +21,12 @@ foreach ($file in @('Start-Companion.cmd','Install-AbletonScript.ps1','companion
     Copy-Item -LiteralPath (Join-Path $projectRoot $file) -Destination $output
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'companion.example.ini') -Destination (Join-Path $output 'companion.ini')
-New-Item -ItemType Directory -Path (Join-Path $output 'ableton\MikroCompanion'),(Join-Path $output 'launcher'),(Join-Path $output 'LICENSES'),(Join-Path $output 'assets') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $output 'ableton\MikroCompanion'),(Join-Path $output 'basic'),(Join-Path $output 'launcher'),(Join-Path $output 'LICENSES'),(Join-Path $output 'assets') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $projectRoot 'basic\README.md') -Destination (Join-Path $output 'basic')
 foreach ($file in @('README.md','CONFIGURATION.md')) {
     Copy-Item -LiteralPath (Join-Path $projectRoot "launcher\$file") -Destination (Join-Path $output 'launcher')
 }
-$scriptFiles = @('__init__.py','model.py','activity.py','clip_activity.py','keyboard.py','editing.py','selection.py','mixer.py','navigation.py','devices.py','browser.py','sequencer.py','pattern.py','ownership.py','surface.py')
+$scriptFiles = @('__init__.py','model.py','activity.py','clip_activity.py','keyboard.py','editing.py','selection.py','mixer.py','navigation.py','devices.py','browser.py','sequencer.py','pattern.py','ownership.py','controls.py','feedback.py','surface.py')
 foreach ($file in $scriptFiles) {
     Copy-Item -LiteralPath (Join-Path $projectRoot "ableton\MikroCompanion\$file") -Destination (Join-Path $output 'ableton\MikroCompanion')
 }

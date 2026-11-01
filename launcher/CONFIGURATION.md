@@ -21,14 +21,16 @@ DawProcesses=Ableton Live*;FL;FL64;FL (scaled);FL64 (scaled);FL (compatible memo
 | `HoldMilliseconds` | Launch hold time: 500-10000 ms. |
 | `StandbyLed` | Enable or disable the standby light and Vegas animation. |
 | `StandbyBrightness` | `Dim` (default), `Normal`, or `Bright`. These are hardware levels, not percentages. |
-| `DisplayDim` | Minimum OLED contrast when `true`; normal contrast when `false` (default). Also controlled by **Dim** in the tray. |
+| `DisplayDim` | Minimum OLED contrast when `true`; normal contrast when `false` (default). Also controlled by **Mikro MK3 > Dim** in the tray. |
 | `EnableClose` | Allow normal close requests for the configured application. |
 | `CloseHoldMilliseconds` | Exit hold time: 1000-10000 ms. |
-| `PauseWhenDawRunning` | Pause for listed DAWs when `true` (default). Set `false` to ignore the list. |
+| `PauseWhenDawRunning` | Pause launcher standby for listed DAWs when `true` (default). Basic/Control surface use their own ownership checks. |
 | `DawProcesses` | Process names separated by `;`. A trailing `*` matches a prefix. Names are case-insensitive; `.exe` is optional. An empty list disables DAW blocking. |
 
 To add a DAW, copy its executable name from Task Manager's **Details** tab into `DawProcesses`.
 
-For Live, set `EnableAbleton=true`. `FixedVelocity` sets Fixed Vel (1-127, default 127); `MidiActivityInputs` lists other controllers whose strikes should flash the pads. See the [Live guide](../ableton/README.md) for setup.
+The tray's **Mikro MK3 > Mode** menu enables Basic or Control surface and saves `EnableAbleton=true`. Launcher standby saves `false`. `FixedVelocity` sets Fixed Vel (1-127, default 127); `MidiActivityInputs` lists other controllers whose strikes should flash the Live pads. See the [Live guide](../ableton/README.md) or [Basic guide](../basic/README.md).
 
 For setup, controller controls and the tray menu, see the [launcher guide](README.md).
+
+Clock, contrast, Fixed Velocity and layout settings are also saved per serial in `devices.ini`. Existing `companion.ini` values supply defaults for older or new device entries. Reload config applies its values to the current controller; edit `devices.ini` only while the companion is closed.
