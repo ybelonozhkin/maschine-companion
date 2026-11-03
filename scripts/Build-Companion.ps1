@@ -35,6 +35,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Mikro input tests failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Aftertouch test compilation failed' }
 & .\bin\AftertouchTests.exe
 if ($LASTEXITCODE -ne 0) { throw 'Aftertouch tests failed' }
+& "$framework\csc.exe" /nologo /target:exe /platform:x64 /out:bin\BrowserMouseInputTests.exe src\ableton\BrowserMouseInput.cs tests\BrowserMouseInputTests.cs
+if ($LASTEXITCODE -ne 0) { throw 'Browser mouse test compilation failed' }
+& .\bin\BrowserMouseInputTests.exe
+if ($LASTEXITCODE -ne 0) { throw 'Browser mouse tests failed' }
 & "$framework\csc.exe" /nologo /target:exe /platform:x64 /out:bin\NoteRepeatTests.exe src\NoteRepeat.cs tests\NoteRepeatTests.cs
 if ($LASTEXITCODE -ne 0) { throw 'Note repeat test compilation failed' }
 & .\bin\NoteRepeatTests.exe

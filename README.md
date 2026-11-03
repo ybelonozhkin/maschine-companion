@@ -4,7 +4,7 @@ Use the Maschine Mikro MK3 as a control surface for Ableton Live on Windows. Pla
 
 Pads show track and clip colors, selected sounds and note activity. The OLED shows the parameter name and its value.
 
-Version **0.5.0**. See the [changelog](CHANGELOG.md) for changes and the [roadmap](ROADMAP.md) for planned features.
+Version **0.6.0**. See the [changelog](CHANGELOG.md) for changes and the [roadmap](ROADMAP.md) for planned features.
 
 For ordinary MIDI playing without a Live script, choose **Basic mode** in the tray. This experimental mode provides local Pad/Keyboard layouts, Note Repeat, Arp and a simple Step sequencer with MIDI-file export. See the [Basic setup and controls](basic/README.md).
 

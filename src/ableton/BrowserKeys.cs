@@ -14,6 +14,7 @@ static class LiveBrowserKeys {
  [DllImport("user32.dll")]static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr window,out uint process);
  [DllImport("user32.dll")]static extern short GetAsyncKeyState(int key);
+ static readonly BrowserMouseInput mouseClicks=new BrowserMouseInput(()=>GetAsyncKeyState(1));
  [DllImport("user32.dll",SetLastError=true)]static extern uint SendInput(uint count,Input[] inputs,int size);
  public enum BrowserFocus {None,Outside,Contents,Sidebar,Search}
  public static BrowserFocus FocusTarget(BrowserFocus area,int key){
@@ -200,9 +201,10 @@ static class LiveBrowserKeys {
  static string lastReason="";static BrowserFocus lastArea=BrowserFocus.None;static DateTime nextInspect;
  public static void Send(int key,Action<string> logger,Func<bool> ready,Action exit,Action<bool> favorite){
   if(!Allowed(key) && key!=257)return;
+  if(key==256){mouseClicks.Begin();nextInspect=DateTime.MinValue;}
   IntPtr window=GetForegroundWindow();uint pid;
   if(window==IntPtr.Zero)return;
-  bool clicked=key==257 && (GetAsyncKeyState(1)&0x8001)!=0;
+  bool clicked=key==257 && mouseClicks.Poll();
   if(key==257 && !clicked && DateTime.UtcNow<nextInspect)return;
   if(key==257)nextInspect=DateTime.UtcNow.AddMilliseconds(500);
   GetWindowThreadProcessId(window,out pid);
