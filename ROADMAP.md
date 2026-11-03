@@ -34,6 +34,10 @@ Add **Copy properties** and **Paste properties** for velocity and length, with p
 
 Paste requires an explicit action and a nonempty target selection. Keep the copied properties available for repeated pastes, and make each paste a single Undo operation. Copy/Paste button assignments remain to be defined.
 
+## Arp rhythms: Launchkey observation
+
+Review Launchkey MK4's Arp rhythms through normal controller use: turn its rhythm control and record the user's descriptions of the display and audible pattern. Use these observations to decide which rhythmic choices and display feedback would be useful in Companion, and curate the current bank of 64 patterns. The final set and controls remain to be agreed.
+
 ## Chords
 
 Add a dedicated **Chords** mode for playing chords from the pads. The chord layout and controls still need to be defined.
