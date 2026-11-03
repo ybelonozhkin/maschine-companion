@@ -4,6 +4,12 @@ All notable changes are documented here, using [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-03
+
+### Fixed
+
+- Browse no longer exits immediately because of a mouse click made before entering the mode.
+
 ## [0.5.0] - 2026-11-01
 
 ### Added
